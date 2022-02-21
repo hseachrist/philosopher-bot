@@ -16,6 +16,9 @@
 
 # Compiled Dynamic libraries
 *.so
+*.elf
+*.map
+*.s19
 *.dylib
 *.dll
 

@@ -24,7 +24,7 @@ ifeq ($(OS),Windows_NT)
 		( \
 			cd $(FIRMWAREREPO) && \
 			$(GITBINARY) stash && \
-			$(GITBINARY) pull && \
+			$(GITBINARY) pull origin master&& \
 			cd .. \
 		) \
 		else \
