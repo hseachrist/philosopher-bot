@@ -1,6 +1,8 @@
 #ifndef PID_H
 #define PID_H
 
+#include "timer.h"
+
 /**
  * General PID controller for all applications
 */
@@ -10,9 +12,11 @@ public:
     PIDController(float kp, float ki, float kd) : m_kp(kp), m_ki(ki), m_kd(kd) {}
     
     float update(float current, float target);
+    void reset_err();
 private:
     float m_kp = 0, m_ki = 0, m_kd = 0;
-    float m_prev_err = 0, m_integral_err = 0, m_prev_time = 0;
+    float m_prev_err = 0, m_integral_err = 0;
+    Timer m_timer;
 };
 
 /**

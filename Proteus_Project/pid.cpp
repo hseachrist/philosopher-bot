@@ -9,8 +9,8 @@
 */
 float PIDController::update(float current, float target) {
     float error = target - current;
-    float dt = TimeNow() - m_prev_time;
-    m_prev_time = TimeNow();
+    float dt = m_timer.get();
+    m_timer.reset();
 
     float result = m_kp * error + m_ki * m_integral_err + m_kd * (error - m_prev_err) / dt;
 
@@ -18,6 +18,13 @@ float PIDController::update(float current, float target) {
     m_integral_err += error * dt;
 
     return result;
+}
+
+// Resets error
+void PIDController::reset_err() {
+    m_prev_err = 0;
+    m_integral_err = 0;
+    m_timer.reset();
 }
 
 
