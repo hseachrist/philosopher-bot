@@ -182,7 +182,7 @@ void drive_until_bump(float inches_cutoff) {
     PHIL_LOG("Start drive_until_bump");
 
     // While less than tick threshold and the front bumpers aren't pressed
-    while ((left_enc.Counts() + right_enc.Counts()) / 2 < inches_cutoff && bump_switches[BS_FRONT_RIGHT].Value() && bump_switches[BS_FRONT_LEFT].Value()) {
+    while ((left_enc.Counts() + right_enc.Counts()) / 2 < inches_cutoff && (bump_switches[BS_FRONT_RIGHT].Value() || bump_switches[BS_FRONT_LEFT].Value())) {
         float power_difference = controller.update(left_enc.Counts(), right_enc.Counts());
 
         if (bump_switches[BS_FRONT_LEFT].Value()){
@@ -202,6 +202,14 @@ void drive_until_bump(float inches_cutoff) {
 
     left_motor.Stop();
     right_motor.Stop();
+}
+
+void log_cds_cell() {
+    while (true) {
+        LCD.Clear();
+        LCD.Write("Voltage: ");
+        LCD.WriteLine(cds_cell.Value());
+    }
 }
 
 int main(void)
