@@ -12,7 +12,7 @@
 // The distance between the wheels
 #define TRACK_WIDTH (6.0+15.0/16.0)
 #define RED_CUTOFF (3.3/2)
-#define BLACK_CUTOFF (2.5)
+#define BLACK_CUTOFF (2.9)
 
 #define PHIL_LOG(x)     do { \
                             LCD.Write(__LINE__); \
@@ -75,7 +75,7 @@ void drive_inch(drive_direction dir, float inches) {
     p_controller controller(KP);
 
     // Target power for motors
-    const float TARGET_PERCENT = 40.;
+    const float TARGET_PERCENT = 30.;
 
     float target_pos = inches * ENC_PER_INCH;
 
@@ -97,6 +97,14 @@ void drive_inch(drive_direction dir, float inches) {
 
     left_motor.Stop();
     right_motor.Stop();
+}
+
+void wait_until_touch() {
+    LCD.WriteLine("Touch Screen. . .");
+    float x, y;
+    while(LCD.Touch(&x, &y));
+    while(!LCD.Touch(&x, &y));
+    while(LCD.Touch(&x, &y));
 }
 
 enum turn_direction {
@@ -144,7 +152,7 @@ bool detected_black() {
 void drive_until_black(float inches) {
     p_controller controller(KP);
 
-    const float TARGET_PERCENT = 40.;
+    const float TARGET_PERCENT = 30.;
 
     float target_pos = inches * ENC_PER_INCH;
 
@@ -169,7 +177,7 @@ void drive_until_black(float inches) {
 // drive until both bump switches are pressed
 void drive_until_bump(float inches_cutoff) {
     p_controller controller(KP);
-    const float TARGET_PERCENT = 40.;
+    const float TARGET_PERCENT = 30.;
 
     PHIL_LOG("Start drive_until_bump");
 
@@ -202,20 +210,20 @@ int main(void)
     LCD.SetBackgroundColor(BLACK);
     LCD.Clear();
     LCD.SetFontColor(WHITE);
-    LCD.WriteLine("Touch Screen to Start");
 
-    float x, y;
-    while(!LCD.Touch(&x, &y));
-    while(LCD.Touch(&x, &y));
+    wait_until_touch();
 
-    drive_inch(DD_FORE, 15.0);
-    turn_degrees(TD_LEFT, 45.0);
+    drive_inch(DD_FORE, 17.0);
+    turn_degrees(TD_LEFT, 35.0);
 
     // Turn to face juke box
-    drive_until_black(10.0);
-    turn_degrees(TD_LEFT, 45.0);
-    drive_inch(DD_FORE, 7.0);
-
+    drive_until_black(6.0);
+    
+    drive_inch(DD_FORE, 1.5);
+    turn_degrees(TD_LEFT, 80.0);
+    drive_inch(DD_FORE, 3.);
+    
+    wait_until_touch();
     float voltage = cds_cell.Value();
     if (voltage < RED_CUTOFF) {
         // Press RED Button
