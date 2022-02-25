@@ -58,7 +58,7 @@ enum bump_switch_loc {
     BS_BACK_LEFT,
     NUM_BS
 };
-DigitalInputPin bump_switches[NUM_BS] = {DigitalInputPin(FEHIO::P1_0), DigitalInputPin(FEHIO::P2_0), DigitalInputPin(FEHIO::P0_2), DigitalInputPin(FEHIO::P3_0)};
+DigitalInputPin bump_switches[NUM_BS] = {DigitalInputPin(FEHIO::P0_4), DigitalInputPin(FEHIO::P3_7), DigitalInputPin(FEHIO::P1_7), DigitalInputPin(FEHIO::P3_5)};
 
 enum drive_direction {
     DD_FORE = 1,
@@ -145,6 +145,8 @@ bool detected_black() {
     return cds_cell.Value() > BLACK_CUTOFF;
 }
 
+
+
 void drive_until_black(float inches) {
     p_controller controller(KP);
 
@@ -171,24 +173,29 @@ void drive_until_black(float inches) {
 }
 
 // drive until both bump switches are pressed
-void drive_until_bump(float inches_cutoff) {
+void drive_until_bump(float inches_cutoff, float percent_power = 30.0) {
     p_controller controller(KP);
     const float TARGET_PERCENT = 30.;
 
+    float target_pos = inches_cutoff * ENC_PER_INCH;
+
     PHIL_LOG("Start drive_until_bump");
 
+    left_enc.ResetCounts();
+    right_enc.ResetCounts();
+    
     // While less than tick threshold and the front bumpers aren't pressed
-    while ((left_enc.Counts() + right_enc.Counts()) / 2 < inches_cutoff && (bump_switches[BS_FRONT_RIGHT].Value() || bump_switches[BS_FRONT_LEFT].Value())) {
+    while (left_enc.Counts() < target_pos && (bump_switches[BS_FRONT_RIGHT].Value() || bump_switches[BS_FRONT_LEFT].Value())) {
         float power_difference = controller.update(right_enc.Counts(), left_enc.Counts());
 
         if (bump_switches[BS_FRONT_LEFT].Value()){
-            left_motor.SetPercent(TARGET_PERCENT);
+            left_motor.SetPercent(percent_power);
         } else {
             left_motor.Stop();
         }
         
         if (bump_switches[BS_FRONT_RIGHT].Value()){
-            right_motor.SetPercent(-(TARGET_PERCENT + power_difference));
+            right_motor.SetPercent(-(percent_power + power_difference));
         } else {
             right_motor.Stop();
         }
@@ -209,6 +216,17 @@ void log_cds_cell() {
     }
 }
 
+void log_bump() {
+    while (true) {
+        LCD.Clear();
+        LCD.Write("FrontLeft: ");
+        LCD.WriteLine(bump_switches[BS_FRONT_LEFT].Value());
+        LCD.Write("FrontRight: ");
+        LCD.WriteLine(bump_switches[BS_FRONT_RIGHT].Value());
+        Sleep(.1);
+    }
+}
+
 int main(void)
 {
     // Wait for user input
@@ -225,36 +243,38 @@ int main(void)
 
     // Turn to face juke box
     drive_until_black(8.0);
-    turn_degrees(TD_LEFT, 92.0);
-    drive_inch(DD_FORE, 2.5);
+    turn_degrees(TD_LEFT, 87.0);
+    drive_inch(DD_FORE, 3.5);
     
-    wait_until_touch();
     float voltage = cds_cell.Value();
     if (voltage > RED_CUTOFF) {
         // Press BLUE Button
         turn_degrees(TD_LEFT, 7.0);
         drive_until_black(2.0);
         turn_degrees(TD_RIGHT, 7.0);
-        drive_inch(DD_FORE, 3.0);
+        drive_until_bump(10.0, 45);
         drive_inch(DD_BACK, 3.0);
         // Turn back
-        turn_degrees(TD_RIGHT, 30.0);
-        drive_inch(DD_BACK, 12.0);
-        turn_degrees(TD_LEFT, 30.0);
+        turn_degrees(TD_RIGHT, 60.0);
+        drive_inch(DD_BACK, 7.0);
+        turn_degrees(TD_LEFT, 50.0);
     } else {
         // Press RED Button
         turn_degrees(TD_RIGHT, 7.0);
         drive_until_black(2.0);
         turn_degrees(TD_LEFT, 7.0);
-        drive_inch(DD_FORE, 3.0);
+        drive_until_bump(5.0, 45);
         drive_inch(DD_BACK, 3.0);
         // Turn back
-        turn_degrees(TD_RIGHT, 45.0);
-        drive_inch(DD_BACK, 15.0);
-        turn_degrees(TD_LEFT, 45.0);
+        turn_degrees(TD_RIGHT, 60.0);
+        drive_inch(DD_BACK, 12.0);
+        turn_degrees(TD_LEFT, 50.0);
     }
-        // Drive up and back down the ramp
-        drive_inch(DD_BACK, 40.0, 70.0);
-        drive_inch(DD_FORE, 40.0, 70.0);
+    // Drive up and back down the ramp
+    drive_inch(DD_BACK, 5.0, 40.0);
+    drive_inch(DD_BACK, 5.0, 50.0);
+    drive_inch(DD_BACK, 5.0, 60.0);
+    drive_inch(DD_BACK, 25.0, 70.0);
+    drive_inch(DD_FORE, 40.0);
 	return 0;
 }
