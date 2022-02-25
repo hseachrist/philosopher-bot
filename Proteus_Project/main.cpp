@@ -71,7 +71,7 @@ enum drive_direction {
  * - dir    -> Direction to drive in  (either forward or backward)
  * - inches -> distance to drive 
 */
-void drive_inch(drive_direction dir, float inches, float power_percent = 30.0) {
+void drive_inch(drive_direction dir, float inches, float power_percent = 25.0) {
     p_controller controller(KP);
 
 
@@ -80,7 +80,7 @@ void drive_inch(drive_direction dir, float inches, float power_percent = 30.0) {
     left_enc.ResetCounts();
     right_enc.ResetCounts();
 
-    PHIL_LOG("Start drive_fore_inch");
+    // PHIL_LOG("Start drive_fore_inch");
 
     while (left_enc.Counts() < target_pos) {
         // Find difference in encoder distance and update powers to correct it.
@@ -91,10 +91,11 @@ void drive_inch(drive_direction dir, float inches, float power_percent = 30.0) {
         right_motor.SetPercent(-(power_percent + power_difference) * dir);
     }
 
-    PHIL_LOG("End drive_fore_inch");
+    // PHIL_LOG("End drive_fore_inch");
 
     left_motor.Stop();
     right_motor.Stop();
+    Sleep(.1);
 }
 
 void wait_until_touch() {
@@ -110,7 +111,7 @@ enum turn_direction {
     TD_RIGHT = -1
 };
 
-void turn_degrees(turn_direction turn_dir, float degrees, float power_percent = 40.0) {
+void turn_degrees(turn_direction turn_dir, float degrees, float power_percent = 30.0) {
     float radians = degrees * PI / 180.0;
     float circumference = radians * (TRACK_WIDTH / 2);
     float target_pos = circumference * ENC_PER_INCH;
@@ -120,7 +121,7 @@ void turn_degrees(turn_direction turn_dir, float degrees, float power_percent = 
     left_enc.ResetCounts();
     right_enc.ResetCounts();
 
-    PHIL_LOG("Start turn_degrees");
+    // PHIL_LOG("Start turn_degrees");
     
     while (left_enc.Counts() < target_pos) {
         float power_difference = controller.update(right_enc.Counts(), left_enc.Counts());
@@ -129,10 +130,11 @@ void turn_degrees(turn_direction turn_dir, float degrees, float power_percent = 
         right_motor.SetPercent(-(power_percent + power_difference) * turn_dir);
     }
 
-    PHIL_LOG("End turn_degrees");
+    // PHIL_LOG("End turn_degrees");
 
     left_motor.Stop();
     right_motor.Stop();
+    Sleep(.1);
 }
 
 bool detected_black() {
@@ -150,14 +152,14 @@ bool detected_black() {
 void drive_until_black(float inches) {
     p_controller controller(KP);
 
-    const float TARGET_PERCENT = 30.;
+    const float TARGET_PERCENT = 25.;
 
     float target_pos = inches * ENC_PER_INCH;
 
     left_enc.ResetCounts();
     right_enc.ResetCounts();
 
-    PHIL_LOG("Start drive_until_black");
+    // PHIL_LOG("Start drive_until_black");
 
     while (!detected_black() && left_enc.Counts() < target_pos) {
         float power_difference = controller.update(right_enc.Counts(), left_enc.Counts());
@@ -166,10 +168,11 @@ void drive_until_black(float inches) {
         right_motor.SetPercent(-(TARGET_PERCENT + power_difference));
     }
 
-    PHIL_LOG("End drive_until_black");
+    // PHIL_LOG("End drive_until_black");
 
     left_motor.Stop();
     right_motor.Stop();
+    Sleep(.1);
 }
 
 // drive until both bump switches are pressed
@@ -179,7 +182,7 @@ void drive_until_bump(float inches_cutoff, float percent_power = 30.0) {
 
     float target_pos = inches_cutoff * ENC_PER_INCH;
 
-    PHIL_LOG("Start drive_until_bump");
+    // PHIL_LOG("Start drive_until_bump");
 
     left_enc.ResetCounts();
     right_enc.ResetCounts();
@@ -201,10 +204,11 @@ void drive_until_bump(float inches_cutoff, float percent_power = 30.0) {
         }
     }
 
-    PHIL_LOG("End drive_until_bump");
+    // PHIL_LOG("End drive_until_bump");
 
     left_motor.Stop();
     right_motor.Stop();
+    Sleep(.1);
 }
 
 void log_cds_cell() {
@@ -227,6 +231,38 @@ void log_bump() {
     }
 }
 
+void ramp() {
+    drive_direction dir = DD_BACK;
+    float target_pos = 30.0 * ENC_PER_INCH;
+    float power_percent = 80;
+
+    left_enc.ResetCounts();
+    right_enc.ResetCounts();
+
+    // PHIL_LOG("Start drive_fore_inch");
+
+    float start_time = TimeNow();
+
+    while (TimeNow() - start_time < .2) {
+        left_motor.SetPercent(power_percent * dir);
+    }
+
+    while (left_enc.Counts() < target_pos) {
+        // Find difference in encoder distance and update powers to correct it.
+        // TODO: Implement motion profile?
+        float power_difference = 16;
+
+        left_motor.SetPercent(power_percent * dir);
+        right_motor.SetPercent(-(power_percent - power_difference) * dir);
+    }
+
+    // PHIL_LOG("End drive_fore_inch");
+
+    left_motor.Stop();
+    right_motor.Stop();
+    Sleep(.1);
+}
+
 int main(void)
 {
     // Wait for user input
@@ -239,42 +275,45 @@ int main(void)
     PHIL_LOG("Starting");
 
     drive_inch(DD_FORE, 12.5);
-    turn_degrees(TD_LEFT, 60.0);
+    turn_degrees(TD_LEFT, 45.0);
 
     // Turn to face juke box
     drive_until_black(8.0);
-    turn_degrees(TD_LEFT, 87.0);
-    drive_inch(DD_FORE, 3.5);
+    turn_degrees(TD_LEFT, 87.0, 15);
+    drive_inch(DD_FORE, 1, 20);
     
     float voltage = cds_cell.Value();
+    PHIL_LOG("Voltage Below");
+    PHIL_LOG(voltage);
     if (voltage > RED_CUTOFF) {
+        PHIL_LOG("Found Blue");
         // Press BLUE Button
-        turn_degrees(TD_LEFT, 7.0);
-        drive_until_black(2.0);
-        turn_degrees(TD_RIGHT, 7.0);
-        drive_until_bump(10.0, 45);
+        turn_degrees(TD_LEFT, 8.0);
+        drive_until_black(5.0);
+        turn_degrees(TD_RIGHT, 8.0);
+        drive_inch(DD_FORE, 1.0, 30);
+        drive_until_bump(5.0, 45);
         drive_inch(DD_BACK, 3.0);
         // Turn back
         turn_degrees(TD_RIGHT, 60.0);
         drive_inch(DD_BACK, 7.0);
-        turn_degrees(TD_LEFT, 50.0);
+        turn_degrees(TD_LEFT, 60.0);
     } else {
+        PHIL_LOG("Found Red");
         // Press RED Button
-        turn_degrees(TD_RIGHT, 7.0);
-        drive_until_black(2.0);
-        turn_degrees(TD_LEFT, 7.0);
+        turn_degrees(TD_RIGHT, 8.0);
+        drive_until_black(5.0);
+        turn_degrees(TD_LEFT, 8.0);
+        drive_inch(DD_FORE, 1.0, 30);
         drive_until_bump(5.0, 45);
         drive_inch(DD_BACK, 3.0);
         // Turn back
         turn_degrees(TD_RIGHT, 60.0);
         drive_inch(DD_BACK, 12.0);
-        turn_degrees(TD_LEFT, 50.0);
+        turn_degrees(TD_LEFT, 60.0);
     }
     // Drive up and back down the ramp
-    drive_inch(DD_BACK, 5.0, 40.0);
-    drive_inch(DD_BACK, 5.0, 50.0);
-    drive_inch(DD_BACK, 5.0, 60.0);
-    drive_inch(DD_BACK, 25.0, 70.0);
-    drive_inch(DD_FORE, 40.0);
+    ramp();
+    drive_inch(DD_FORE, 30.0);
 	return 0;
 }
