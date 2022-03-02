@@ -3,3 +3,7 @@ pid.h
 pid.cpp
 timer.cpp
 timer.h
+motion_profile.cpp
+motion_profile.h
+util.cpp
+util.h
