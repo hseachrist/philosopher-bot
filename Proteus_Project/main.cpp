@@ -50,15 +50,28 @@ DigitalEncoder right_enc(FEHIO::P1_0);
 // Color sensor
 AnalogInputPin cds_cell(FEHIO::P2_1);
 
+FEHMotor left_lift(FEHMotor::Motor2, 5.0);
+FEHMotor right_lift(FEHMotor::Motor2, 5.0);
+
 // Bump Switches
 enum bump_switch_loc {
     BS_FRONT_RIGHT = 0,
     BS_FRONT_LEFT,
     BS_BACK_RIGHT,
     BS_BACK_LEFT,
+    BS_LIFT_DOWN,
+    BS_LIFT_UP,
     NUM_BS
 };
-DigitalInputPin bump_switches[NUM_BS] = {DigitalInputPin(FEHIO::P0_4), DigitalInputPin(FEHIO::P3_7), DigitalInputPin(FEHIO::P1_7), DigitalInputPin(FEHIO::P3_5)};
+
+DigitalInputPin bump_switches[NUM_BS] = {
+    DigitalInputPin(FEHIO::P0_4),   // BS_FRONT_RIGHT
+    DigitalInputPin(FEHIO::P3_7),   // BS_FRONT_LEFT
+    DigitalInputPin(FEHIO::P1_7),   // BS_BACK_RIGHT
+    DigitalInputPin(FEHIO::P3_5),   // BS_BACK_LEFT
+    DigitalInputPin(FEHIO::P2_0),   // BS_LIFT_DOWN
+    DigitalInputPin(FEHIO::P2_1),   // BS_LIFT_UP
+};
 
 enum drive_direction {
     DD_FORE = 1,
@@ -176,11 +189,15 @@ void drive_until_black(float inches) {
 }
 
 // drive until both bump switches are pressed
-void drive_until_bump(float inches_cutoff, float percent_power = 30.0) {
+void drive_until_bump(drive_direction dir, float inches_cutoff, float percent_power = 30.0) {
     p_controller controller(KP);
     const float TARGET_PERCENT = 30.;
 
     float target_pos = inches_cutoff * ENC_PER_INCH;
+
+    // Check whether to check for front or back switches
+    bump_switch_loc right_bs = (dir == DD_FORE) ? BS_FRONT_RIGHT : BS_BACK_RIGHT;
+    bump_switch_loc left_bs = (dir == DD_BACK) ? BS_FRONT_LEFT : BS_BACK_LEFT;
 
     // PHIL_LOG("Start drive_until_bump");
 
@@ -188,17 +205,17 @@ void drive_until_bump(float inches_cutoff, float percent_power = 30.0) {
     right_enc.ResetCounts();
     
     // While less than tick threshold and the front bumpers aren't pressed
-    while (left_enc.Counts() < target_pos && (bump_switches[BS_FRONT_RIGHT].Value() || bump_switches[BS_FRONT_LEFT].Value())) {
+    while (left_enc.Counts() < target_pos && (bump_switches[right_bs].Value() || bump_switches[left_bs].Value())) {
         float power_difference = controller.update(right_enc.Counts(), left_enc.Counts());
 
-        if (bump_switches[BS_FRONT_LEFT].Value()){
-            left_motor.SetPercent(percent_power);
+        if (bump_switches[left_bs].Value()){
+            left_motor.SetPercent(percent_power * dir);
         } else {
             left_motor.Stop();
         }
         
-        if (bump_switches[BS_FRONT_RIGHT].Value()){
-            right_motor.SetPercent(-(percent_power + power_difference));
+        if (bump_switches[right_bs].Value()){
+            right_motor.SetPercent(-(percent_power + power_difference) * dir);
         } else {
             right_motor.Stop();
         }
@@ -263,6 +280,16 @@ void ramp() {
     Sleep(.1);
 }
 
+void drop_basket() {
+    const float TARGET_POWER = 50.;
+    left_lift.SetPercent(TARGET_POWER);
+    right_lift.SetPercent(-TARGET_POWER);
+    while (bump_switches[BS_LIFT_DOWN].Value());
+    left_lift.Stop();
+    right_lift.Stop();
+
+}
+
 int main(void)
 {
     // Wait for user input
@@ -274,46 +301,35 @@ int main(void)
     while(cds_cell.Value() > RED_CUTOFF);
     PHIL_LOG("Starting");
 
-    drive_inch(DD_FORE, 12.5);
-    turn_degrees(TD_LEFT, 45.0);
+    // Drop off basket
+    drive_inch(DD_FORE, 20);
+    drop_basket();
 
-    // Turn to face juke box
-    drive_until_black(8.0);
-    turn_degrees(TD_LEFT, 87.0, 15);
-    drive_inch(DD_FORE, 1, 20);
+    // Go to ticket
+    drive_inch(DD_BACK, 10);
+    turn_degrees(TD_LEFT, 45);
+    drive_until_bump(DD_BACK, 40);
+    drive_inch(DD_FORE, 5);
+    turn_degrees(TD_RIGHT, 90);
+    drive_until_bump(DD_BACK, 10);
+    // Move Ticket
+    turn_degrees(TD_LEFT, 30);
+    turn_degrees(TD_RIGHT, 30);
     
-    float voltage = cds_cell.Value();
-    PHIL_LOG("Voltage Below");
-    PHIL_LOG(voltage);
-    if (voltage > RED_CUTOFF) {
-        PHIL_LOG("Found Blue");
-        // Press BLUE Button
-        turn_degrees(TD_LEFT, 8.0);
-        drive_until_black(5.0);
-        turn_degrees(TD_RIGHT, 8.0);
-        drive_inch(DD_FORE, 1.0, 30);
-        drive_until_bump(5.0, 45);
-        drive_inch(DD_BACK, 3.0);
-        // Turn back
-        turn_degrees(TD_RIGHT, 60.0);
-        drive_inch(DD_BACK, 7.0);
-        turn_degrees(TD_LEFT, 60.0);
-    } else {
-        PHIL_LOG("Found Red");
-        // Press RED Button
-        turn_degrees(TD_RIGHT, 8.0);
-        drive_until_black(5.0);
-        turn_degrees(TD_LEFT, 8.0);
-        drive_inch(DD_FORE, 1.0, 30);
-        drive_until_bump(5.0, 45);
-        drive_inch(DD_BACK, 3.0);
-        // Turn back
-        turn_degrees(TD_RIGHT, 60.0);
-        drive_inch(DD_BACK, 12.0);
-        turn_degrees(TD_LEFT, 60.0);
-    }
-    // Drive up and back down the ramp
-    ramp();
-    drive_inch(DD_FORE, 30.0);
-	return 0;
+    // Go Up Ramp
+    drive_inch(DD_BACK, 10);
+    turn_degrees(TD_LEFT, 90);
+    drive_until_bump(DD_BACK, 10);
+    drive_inch(DD_FORE, 15);
+    turn_degrees(TD_RIGHT, 90);
+    drive_until_bump(DD_BACK, 30);
+    
+    // Hit wall on the other side
+    drive_until_bump(DD_FORE, 50);
+    drive_inch(DD_BACK, 5);
+    turn_degrees(TD_RIGHT, 90);
+    drive_inch(DD_FORE, 10);
+    
+	
+    return 0;
 }
