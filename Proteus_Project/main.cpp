@@ -3,5 +3,5 @@
 int main(void)
 {
     LCD.WriteLine("Hello World!");
-	return 0;
+    return 0;
 }
