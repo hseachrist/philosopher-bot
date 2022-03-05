@@ -3,41 +3,33 @@
 #include <FEHMotor.h>
 #include <FEHUtility.h>
 
+#include "pid.h"
+#include "timer.h"
+
 #define PI 3.14159
 
-#define KP .00
+
 #define WHEEL_RADIUS (2.5/2)
 // number of encoders per inch
 #define ENC_PER_INCH (316/(2*WHEEL_RADIUS*(PI)))
 // The distance between the wheels
-#define TRACK_WIDTH (6.90625)
+#define TRACK_WIDTH (7.3)
 #define RED_CUTOFF (1.1)
 #define BLACK_CUTOFF (2.7)
 
+#define DEBUG_LOG (true)
+
 #define PHIL_LOG(x)     do { \
-                            LCD.Write(__LINE__); \
-                            LCD.Write(": "); \
-                            LCD.Write(x); \
-                            LCD.WriteLine(""); \
+                            if (DEBUG_LOG) {\
+                                LCD.Write(__LINE__); \
+                                LCD.Write(": "); \
+                                LCD.Write(x); \
+                                LCD.WriteLine(""); \
+                            } \
                         } while(0);
 
-// AKA a Proportional controller
-// Use with the drivetrain to make sure the the wheels have driven the about the same distance
-// So if for whatever reason one motor is going slower than the other, it will speed up that motor
-class p_controller {
-public:
-    p_controller() {};
-    p_controller(float kP) : m_kP(kP) {}
+#define POS_INF (1.0 / 0.0)
 
-    float update(float current, float target) {
-        float error = target - current;
-        return m_kP * error;
-    }
-
-private:
-    float m_kP = 0;
-
-};
 
 // TODO Voltage Rating 
 FEHMotor left_motor(FEHMotor::Motor0, 9.0);
@@ -52,6 +44,11 @@ AnalogInputPin cds_cell(FEHIO::P2_1);
 
 FEHMotor left_lift(FEHMotor::Motor2, 5.0);
 FEHMotor right_lift(FEHMotor::Motor2, 5.0);
+
+// PID Controller Values
+float KP = 1;
+float KI = .00;
+float KD = .00;
 
 // Bump Switches
 enum bump_switch_loc {
@@ -68,9 +65,9 @@ DigitalInputPin bump_switches[NUM_BS] = {
     DigitalInputPin(FEHIO::P0_4),   // BS_FRONT_RIGHT
     DigitalInputPin(FEHIO::P3_7),   // BS_FRONT_LEFT
     DigitalInputPin(FEHIO::P1_7),   // BS_BACK_RIGHT
-    DigitalInputPin(FEHIO::P3_5),   // BS_BACK_LEFT
-    DigitalInputPin(FEHIO::P2_0),   // BS_LIFT_DOWN
-    DigitalInputPin(FEHIO::P2_1),   // BS_LIFT_UP
+    DigitalInputPin(FEHIO::P3_0),   // BS_BACK_LEFT
+    DigitalInputPin(FEHIO::P3_7),   // BS_LIFT_DOWN
+    DigitalInputPin(FEHIO::P2_1),   // BS_LIFT_UP (NON-EXISTANT)
 };
 
 enum drive_direction {
@@ -84,8 +81,8 @@ enum drive_direction {
  * - dir    -> Direction to drive in  (either forward or backward)
  * - inches -> distance to drive 
 */
-void drive_inch(drive_direction dir, float inches, float power_percent = 25.0) {
-    p_controller controller(KP);
+void drive_inch(drive_direction dir, float inches, float power_percent = 25.0, float timeout = POS_INF) {
+    PIDController controller(KP, KI, KD);
 
 
     float target_pos = inches * ENC_PER_INCH;
@@ -93,9 +90,12 @@ void drive_inch(drive_direction dir, float inches, float power_percent = 25.0) {
     left_enc.ResetCounts();
     right_enc.ResetCounts();
 
-    // PHIL_LOG("Start drive_fore_inch");
+    Timer timer;
+    timer.reset();
 
-    while (left_enc.Counts() < target_pos) {
+    PHIL_LOG("Start drive_fore_inch");
+
+    while (left_enc.Counts() < target_pos && timer.get() < timeout) {
         // Find difference in encoder distance and update powers to correct it.
         // TODO: Implement motion profile?
         float power_difference = controller.update(right_enc.Counts(), left_enc.Counts());
@@ -104,7 +104,7 @@ void drive_inch(drive_direction dir, float inches, float power_percent = 25.0) {
         right_motor.SetPercent(-(power_percent + power_difference) * dir);
     }
 
-    // PHIL_LOG("End drive_fore_inch");
+    PHIL_LOG("End drive_fore_inch");
 
     left_motor.Stop();
     right_motor.Stop();
@@ -124,26 +124,29 @@ enum turn_direction {
     TD_RIGHT = -1
 };
 
-void turn_degrees(turn_direction turn_dir, float degrees, float power_percent = 30.0) {
+void turn_degrees(turn_direction turn_dir, float degrees, float power_percent = 30.0, float timeout = POS_INF) {
     float radians = degrees * PI / 180.0;
     float circumference = radians * (TRACK_WIDTH / 2);
     float target_pos = circumference * ENC_PER_INCH;
 
-    p_controller controller(KP);
+    PIDController controller(KP/10 + .1, KI, KD);
 
     left_enc.ResetCounts();
     right_enc.ResetCounts();
 
-    // PHIL_LOG("Start turn_degrees");
+    Timer timer;
+    timer.reset();
+
+    PHIL_LOG("Start turn_degrees");
     
-    while (left_enc.Counts() < target_pos) {
+    while (left_enc.Counts() < target_pos && timer.get() < timeout) {
         float power_difference = controller.update(right_enc.Counts(), left_enc.Counts());
 
         left_motor.SetPercent(-power_percent * turn_dir);
         right_motor.SetPercent(-(power_percent + power_difference) * turn_dir);
     }
 
-    // PHIL_LOG("End turn_degrees");
+    PHIL_LOG("End turn_degrees");
 
     left_motor.Stop();
     right_motor.Stop();
@@ -163,7 +166,7 @@ bool detected_black() {
 
 
 void drive_until_black(float inches) {
-    p_controller controller(KP);
+    PIDController controller(KP, KI, KD);
 
     const float TARGET_PERCENT = 25.;
 
@@ -172,16 +175,16 @@ void drive_until_black(float inches) {
     left_enc.ResetCounts();
     right_enc.ResetCounts();
 
-    // PHIL_LOG("Start drive_until_black");
+    PHIL_LOG("Start drive_until_black");
 
     while (!detected_black() && left_enc.Counts() < target_pos) {
-        float power_difference = controller.update(right_enc.Counts(), left_enc.Counts());
+        float power_difference = 0;
 
         left_motor.SetPercent(TARGET_PERCENT);
         right_motor.SetPercent(-(TARGET_PERCENT + power_difference));
     }
 
-    // PHIL_LOG("End drive_until_black");
+    PHIL_LOG("End drive_until_black");
 
     left_motor.Stop();
     right_motor.Stop();
@@ -189,39 +192,44 @@ void drive_until_black(float inches) {
 }
 
 // drive until both bump switches are pressed
-void drive_until_bump(drive_direction dir, float inches_cutoff, float percent_power = 30.0) {
-    p_controller controller(KP);
+void drive_until_bump(drive_direction dir, float inches_cutoff, float percent_power = 30.0, float timeout = POS_INF) {
+    PIDController controller(KP, KI, KD);
     const float TARGET_PERCENT = 30.;
 
     float target_pos = inches_cutoff * ENC_PER_INCH;
 
     // Check whether to check for front or back switches
     bump_switch_loc right_bs = (dir == DD_FORE) ? BS_FRONT_RIGHT : BS_BACK_RIGHT;
-    bump_switch_loc left_bs = (dir == DD_BACK) ? BS_FRONT_LEFT : BS_BACK_LEFT;
+    bump_switch_loc left_bs = (dir == DD_FORE) ? BS_FRONT_LEFT : BS_BACK_LEFT;
 
-    // PHIL_LOG("Start drive_until_bump");
+    PHIL_LOG("Start drive_until_bump");
+
+    Timer timer;
+    timer.reset();
 
     left_enc.ResetCounts();
     right_enc.ResetCounts();
     
     // While less than tick threshold and the front bumpers aren't pressed
-    while (left_enc.Counts() < target_pos && (bump_switches[right_bs].Value() || bump_switches[left_bs].Value())) {
+    while (left_enc.Counts() < target_pos && (bump_switches[right_bs].Value() || bump_switches[left_bs].Value()) && timer.get() < timeout) {
         float power_difference = controller.update(right_enc.Counts(), left_enc.Counts());
 
         if (bump_switches[left_bs].Value()){
             left_motor.SetPercent(percent_power * dir);
         } else {
             left_motor.Stop();
+            power_difference = 0;
         }
-        
-        if (bump_switches[right_bs].Value()){
+
+        if (bump_switches[right_bs].Value()) {
             right_motor.SetPercent(-(percent_power + power_difference) * dir);
         } else {
             right_motor.Stop();
         }
+        
     }
 
-    // PHIL_LOG("End drive_until_bump");
+    PHIL_LOG("End drive_until_bump");
 
     left_motor.Stop();
     right_motor.Stop();
@@ -244,6 +252,10 @@ void log_bump() {
         LCD.WriteLine(bump_switches[BS_FRONT_LEFT].Value());
         LCD.Write("FrontRight: ");
         LCD.WriteLine(bump_switches[BS_FRONT_RIGHT].Value());
+        LCD.Write("BackLeft: ");
+        LCD.WriteLine(bump_switches[BS_BACK_LEFT].Value());
+        LCD.Write("BackRight: ");
+        LCD.WriteLine(bump_switches[BS_BACK_RIGHT].Value());
         Sleep(.1);
     }
 }
@@ -256,7 +268,7 @@ void ramp() {
     left_enc.ResetCounts();
     right_enc.ResetCounts();
 
-    // PHIL_LOG("Start drive_fore_inch");
+    PHIL_LOG("Start ramp");
 
     float start_time = TimeNow();
 
@@ -273,21 +285,33 @@ void ramp() {
         right_motor.SetPercent(-(power_percent - power_difference) * dir);
     }
 
-    // PHIL_LOG("End drive_fore_inch");
+    PHIL_LOG("End ramp");
 
     left_motor.Stop();
     right_motor.Stop();
     Sleep(.1);
 }
 
-void drop_basket() {
+void drop_basket(float timeout = POS_INF) {
     const float TARGET_POWER = 50.;
     left_lift.SetPercent(TARGET_POWER);
     right_lift.SetPercent(-TARGET_POWER);
-    while (bump_switches[BS_LIFT_DOWN].Value());
+    Timer timer;
+    timer.reset();
+    while (bump_switches[BS_LIFT_DOWN].Value() && timer.get() < timeout);
     left_lift.Stop();
     right_lift.Stop();
+}
 
+void lift_basket(float timeout = POS_INF) {
+    const float TARGET_POWER = 40;
+    left_lift.SetPercent(-TARGET_POWER);
+    right_lift.SetPercent(TARGET_POWER + 40);
+    Timer timer;
+    timer.reset();
+    while (bump_switches[BS_LIFT_UP].Value() && timer.get() < timeout);
+    left_lift.Stop();
+    right_lift.Stop();
 }
 
 int main(void)
@@ -301,35 +325,55 @@ int main(void)
     while(cds_cell.Value() > RED_CUTOFF);
     PHIL_LOG("Starting");
 
-    // Drop off basket
-    drive_inch(DD_FORE, 20);
-    drop_basket();
-
-    // Go to ticket
-    drive_inch(DD_BACK, 10);
-    turn_degrees(TD_LEFT, 45);
-    drive_until_bump(DD_BACK, 40);
-    drive_inch(DD_FORE, 5);
-    turn_degrees(TD_RIGHT, 90);
-    drive_until_bump(DD_BACK, 10);
-    // Move Ticket
+    // get ticket
+    drive_until_bump(DD_FORE, 20, 30, 5);
     turn_degrees(TD_LEFT, 30);
-    turn_degrees(TD_RIGHT, 30);
-    
-    // Go Up Ramp
-    drive_inch(DD_BACK, 10);
+
+    // Go to sink
+    drive_inch(DD_BACK, 7, 30, 2);
+    turn_degrees(TD_LEFT, 90);
+    drive_until_bump(DD_BACK, 10);
+    drive_inch(DD_FORE, 15, 30, 7);
+    turn_degrees(TD_RIGHT, 90, 30, 5);
+    drive_inch(DD_FORE, 34, 40, 5);
+    turn_degrees(TD_LEFT, 90, 30, 5);
+    drive_inch(DD_FORE, 6, 30, 5);
+    turn_degrees(TD_LEFT, 90, 30, 5);
+    drive_until_bump(DD_FORE, 6, 80, 3);
+    drive_inch(DD_BACK, 6, 80, 3);
+    drive_until_bump(DD_FORE, 6, 80, 3);
+    drop_basket(2);
+    LCD.WriteLine("I think. Therefore. I AM!");
+    drive_inch(DD_BACK, 10, 80);
+    turn_degrees(TD_RIGHT, 90);
+    drive_inch(DD_BACK, 22);
+    turn_degrees(TD_RIGHT, 90);
+    drive_inch(DD_FORE, 22);
+
+/*
+    drive_inch(DD_BACK, 6);
     turn_degrees(TD_LEFT, 90);
     drive_until_bump(DD_BACK, 10);
     drive_inch(DD_FORE, 15);
-    turn_degrees(TD_RIGHT, 90);
+    turn_degrees(TD_RIGHT, 92);
     drive_until_bump(DD_BACK, 30);
-    
-    // Hit wall on the other side
-    drive_until_bump(DD_FORE, 50);
-    drive_inch(DD_BACK, 5);
+    drive_inch(DD_FORE, 12);
+    turn_degrees(TD_RIGHT, 180);s
+    drive_until_bump(DD_BACK, 50, 75);
+
+    // Navigate to Sink
+    drive_inch(DD_FORE, 8);
+    turn_degrees(TD_LEFT, 90);
+    drive_until_bump(DD_BACK, 25);
+    drive_inch(DD_FORE, 2);
     turn_degrees(TD_RIGHT, 90);
-    drive_inch(DD_FORE, 10);
-    
-	
+    drop_basket(4);
+
+
+    // Go to burger flipper
+    drive_inch(DD_BACK, 3);
+    turn_degrees(TD_RIGHT, 45);
+    drive_inch(DD_BACK, 22);
+    */
     return 0;
 }
