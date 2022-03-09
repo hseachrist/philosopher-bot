@@ -16,10 +16,10 @@
 
 // Defines for pulsing the robot
 #define PULSE_TIME .1
-#define PULSE_POWER .3
+#define PULSE_POWER 30
 
 // Define for the motor power
-#define POWER .3
+#define POWER 30
 
 // Orientation of QR Code
 #define PLUS 0
@@ -192,7 +192,7 @@ void check_y(float y_coordinate, int orientation)
 void check_heading(float heading)
 {
 
-    const float threshold = .4;
+    const float threshold = 2;
 
     //You will need to fill out this one yourself and take into account
     //checking for proper RPS data and the edge conditions
@@ -206,6 +206,12 @@ void check_heading(float heading)
     */
 
     while (true) {
+        LCD.Clear();
+        if (RPS.Heading() < 0) {
+            LCD.WriteLine("Can't Detect QR Code");
+            continue;
+        }
+
         float current_heading = RPS.Heading();
         float current_heading_phased_right = current_heading - 360;
         float current_heading_phased_left = current_heading + 360;
@@ -213,6 +219,13 @@ void check_heading(float heading)
         float diff = heading - current_heading;
         float diff_phased_right = heading - current_heading_phased_right;
         float diff_phased_left = heading - current_heading_phased_right;
+
+        LCD.Write("Difference: ");
+        LCD.WriteLine(diff);
+        LCD.Write("Phase R: ");
+        LCD.WriteLine(diff_phased_right);
+        LCD.Write("Phase L: ");
+        LCD.WriteLine(diff_phased_left);
 
         if (abs(diff_phased_right) < abs(diff)) {
             diff = diff_phased_right;
@@ -222,11 +235,16 @@ void check_heading(float heading)
             diff = diff_phased_left;
         }
 
+        LCD.Write("\nMin Diff: ");
+        LCD.WriteLine(diff);
+
         
         if (diff > threshold) {
             // target heading is to the left of current heading
+            LCD.WriteLine("difference is greater than threshold");
             pulse_counterclockwise(PULSE_POWER, PULSE_TIME);
         } else if (diff < -threshold) {
+            LCD.WriteLine("difference is less than -threshold");
             // target heading is to the right of current heading
             pulse_clockwise(PULSE_POWER, PULSE_TIME);
         } else {
@@ -267,10 +285,10 @@ int main(void)
     C_heading = 270;
     D_heading = 0;
 
-    B_C_counts = COUNTS_PER_INCH * 16;
-    C_D_counts = COUNTS_PER_INCH * 10;
+    B_C_counts = COUNTS_PER_INCH * 10;
+    C_D_counts = COUNTS_PER_INCH * 6;
 
-    turn_90_counts = COUNTS_PER_DEGREE * 90;
+    turn_90_counts = COUNTS_PER_DEGREE * 40;
 
     // A --> B
     LCD.WriteLine("A -> B: Check Y");
@@ -281,12 +299,8 @@ int main(void)
     // B --> C
     LCD.WriteLine("B -> C: Move forward");
     move_forward(POWER, B_C_counts);
-    LCD.WriteLine("B -> C: Check X");
-    check_x(C_x, MINUS);
     LCD.WriteLine("B -> C: Turn");
     turn_counterclockwise(POWER, turn_90_counts);
-    LCD.WriteLine("B -> C: Check Heading");
-    check_heading(C_heading);
 
     // C --> D
     LCD.WriteLine("C -> D: Move forward");
