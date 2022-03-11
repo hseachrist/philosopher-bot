@@ -69,7 +69,7 @@ enum cds_cell_loc {
 AnalogInputPin cds_cell[NUM_CDS] = {
     AnalogInputPin(FEHIO::P3_3), // CDS_LEFT
     AnalogInputPin(FEHIO::P1_4), // CDS_RIGHT
-    AnalogInputPin(FEHIO::P2_1), // CDS_CENTER
+    AnalogInputPin(FEHIO::P2_2), // CDS_CENTER
 };
 
 FEHMotor left_lift(FEHMotor::Motor2, 5.0);
@@ -111,7 +111,7 @@ enum drive_direction {
  * - dir    -> Direction to drive in  (either forward or backward)
  * - inches -> distance to drive 
 */
-void drive_inch(drive_direction dir, float inches, float power_percent = 25.0, float timeout = POS_INF) {
+void drive_inch(drive_direction dir, float inches, float power_percent = 40.0, float timeout = POS_INF) {
     PIDController controller(KP, KI, KD);
 
 
@@ -557,7 +557,7 @@ void check_y(float y_coordinate, int orientation)
         power = -PULSE_POWER;
     }
 
-    float threshold = .5;
+    float threshold = .25;
 
     float target_heading = (RPS.Heading() < 360 && RPS.Heading() > 180) ? 270 : 90;
 
@@ -585,31 +585,61 @@ void check_y(float y_coordinate, int orientation)
     }
 }
 
+void drive_until_deadzone(drive_direction dir, float inches) {
+    PIDController controller(KP, KI, KD);
+
+    const float TARGET_PERCENT = 25.;
+
+    float target_pos = inches * ENC_PER_INCH;
+
+    left_enc.ResetCounts();
+    right_enc.ResetCounts();
+
+    PHIL_LOG("Start drive_until_black");
+
+    while (rps_valid() && left_enc.Counts() < target_pos) {
+        float power_difference = 0;
+
+        left_motor.SetPercent(TARGET_PERCENT);
+        right_motor.SetPercent(-(TARGET_PERCENT + power_difference));
+    }
+
+    PHIL_LOG("End drive_until_black");
+
+    left_motor.Stop();
+    right_motor.Stop();
+    Sleep(.1);
+}
+
 int main(void)
 {
     // Wait for user input
     LCD.SetBackgroundColor(BLACK);
     LCD.Clear();
     LCD.SetFontColor(WHITE);
-
     RPS.InitializeTouchMenu();
 
     PHIL_LOG("Waiting for Start");
-    while(min_cds() > RED_CUTOFF);
+    while(cds_cell[CDS_LEFT].Value() > RED_CUTOFF);
     PHIL_LOG("Starting");
 
-    drive_inch(DD_FORE, 13);
+    drive_inch(DD_FORE, 15);
     turn_degrees(TD_RIGHT, 45);
     check_heading(90);
     drive_inch(DD_FORE, 31, 40);
     turn_degrees(TD_LEFT, 90);
     drive_until_bump(DD_BACK, 20, 30, 10);
     drive_inch(DD_FORE, 12.5);
-    check_x(17.5, PLUS);
+    check_x(17.8, PLUS);
     turn_degrees(TD_RIGHT, 90);
     check_heading(90);
     drive_inch(DD_FORE, 6);
-    check_y(61.1, PLUS);
+    if (RPS.CurrentRegionLetter() == 'G' || RPS.CurrentRegionLetter() == 'F' ) {
+        check_y(59.7, PLUS);
+    } else {
+        check_y(60.55, PLUS);
+    }
+    
     check_heading(90);
     //drop_basket(3);
     //drive_inch(DD_FORE, 5);
@@ -619,6 +649,32 @@ int main(void)
     turn_degrees(TD_RIGHT, 30, 80.0);
     lift_basket(.4);
     drive_inch(DD_FORE, 3, 25, 1);
+
+    drive_inch(DD_BACK, 2);
+    turn_degrees(TD_LEFT, 40);
+    drive_inch(DD_BACK, 3);
+    drop_basket(.3);
+    check_heading(90);
+    drive_inch(DD_BACK, 5);
+    turn_degrees(TD_LEFT, 90);
+    check_heading(180);
+    drive_until_bump(DD_BACK, 20);
+    drop_basket(.75);
+    lift_basket(.5);
+    drive_inch(DD_FORE, 4);
+    check_x(27.5, PLUS);
+    turn_degrees(TD_RIGHT, 90);
+    check_heading(90);
+    drive_inch(DD_FORE, 2);
+    check_y(58.9, PLUS);
+    turn_degrees(TD_LEFT, 80);
+    
+    lift_basket(.6);
+    check_heading(170);
+    drive_until_deadzone(DD_FORE, 20);
+    drive_inch(DD_FORE, 4);
+    drop_basket(.7);
+    lift_basket(.7);
 
     while(true);
     
