@@ -100,6 +100,238 @@ DigitalInputPin bump_switches[NUM_BS] = {
     DigitalInputPin(FEHIO::P2_1),   // BS_LIFT_UP (NON-EXISTANT)
 };
 
+void rps_log_once() {
+    LCD.Write("X: ");
+    LCD.WriteLine(RPS.X());
+    LCD.Write("Y: ");
+    LCD.WriteLine(RPS.Y());
+    LCD.Write("Heading: ");
+    LCD.WriteLine(RPS.Heading());
+}
+
+void rps_log() {
+    while(true) {
+        LCD.Clear();
+        LCD.Write("X: ");
+        LCD.WriteLine(RPS.X());
+        LCD.Write("Y: ");
+        LCD.WriteLine(RPS.Y());
+        LCD.Write("Heading: ");
+        LCD.WriteLine(RPS.Heading());
+        Sleep(.2);
+    }
+}
+
+/*
+ * Pulse forward a short distance using time
+ */
+void pulse_forward(int percent, float seconds) 
+{
+    // Set both motors to desired percent
+    right_motor.SetPercent(-percent);
+    left_motor.SetPercent(percent);
+
+    // Wait for the correct number of seconds
+    Sleep(seconds);
+
+    // Turn off motors
+    right_motor.Stop();
+    left_motor.Stop();
+}
+
+/*
+ * Pulse counterclockwise a short distance using time
+ */
+void pulse_counterclockwise(int percent, float seconds) 
+{
+    // Set both motors to desired percent
+    right_motor.SetPercent(-percent);
+    left_motor.SetPercent(-percent);
+
+    // Wait for the correct number of seconds
+    Sleep(seconds);
+
+    // Turn off motors
+    right_motor.Stop();
+    left_motor.Stop();
+}
+
+/*
+ * Pulse clockwise a short distance using time
+ */
+void pulse_clockwise(int percent, float seconds) 
+{
+    // Set both motors to desired percent
+    right_motor.SetPercent(percent);
+    left_motor.SetPercent(percent);
+
+    // Wait for the correct number of seconds
+    Sleep(seconds);
+
+    // Turn off motors
+    right_motor.Stop();
+    left_motor.Stop();
+}
+
+bool rps_valid() {
+    return RPS.X() >= 0 && RPS.Y() >= 0 && RPS.Heading() >= 0;
+}
+
+bool in_deadzone() {
+    return RPS.X() <= -1.5 || RPS.Y() <= -1.5 || RPS.Heading() <= -1.5;
+}
+
+/* 
+ * Use RPS to move to the desired heading
+ */
+void check_heading(float heading)
+{
+
+    const float threshold = 2;
+
+    //You will need to fill out this one yourself and take into account
+    //checking for proper RPS data and the edge conditions
+    //(when you want the robot to go to 0 degrees or close to 0 degrees)
+
+    /*
+        SUGGESTED ALGORITHM:
+        1. Check the current orientation of the QR code and the desired orientation of the QR code
+        2. Check if the robot is within the desired threshold for the heading based on the orientation
+        3. Pulse in the correct direction based on the orientation
+    */
+
+    while (true) {
+        LCD.Clear();
+        if (RPS.Heading() < 0) {
+            LCD.WriteLine("Can't Detect QR Code");
+            continue;
+        }
+
+        float current_heading = RPS.Heading();
+        float current_heading_phased_right = current_heading - 360;
+        float current_heading_phased_left = current_heading + 360;
+
+        float diff = heading - current_heading;
+        float diff_phased_right = heading - current_heading_phased_right;
+        float diff_phased_left = heading - current_heading_phased_right;
+
+        LCD.Write("Difference: ");
+        LCD.WriteLine(diff);
+        LCD.Write("Phase R: ");
+        LCD.WriteLine(diff_phased_right);
+        LCD.Write("Phase L: ");
+        LCD.WriteLine(diff_phased_left);
+
+        if (abs(diff_phased_right) < abs(diff)) {
+            diff = diff_phased_right;
+        }
+
+        if (abs(diff_phased_left) < abs(diff)) {
+            diff = diff_phased_left;
+        }
+
+        LCD.Write("\nMin Diff: ");
+        LCD.WriteLine(diff);
+
+        
+        if (diff > threshold) {
+            // target heading is to the left of current heading
+            LCD.WriteLine("difference is greater than threshold");
+            pulse_counterclockwise(PULSE_POWER, PULSE_TIME);
+        } else if (diff < -threshold) {
+            LCD.WriteLine("difference is less than -threshold");
+            //target heading is to the right of current heading
+            pulse_clockwise(PULSE_POWER, PULSE_TIME);
+        } else {
+            break;
+        }
+
+        Sleep(RPS_WAIT_TIME_IN_SEC);
+    }
+}
+
+/* 
+ * Use RPS to move to the desired x_coordinate based on the orientation of the QR code
+ */
+void check_x(float x_coordinate, int orientation)
+{
+    // Determine the direction of the motors based on the orientation of the QR code 
+    int power = PULSE_POWER;
+    if(orientation == MINUS){
+        power = -PULSE_POWER;
+    }
+
+    float threshold = .5;
+
+    float target_heading = (RPS.Heading() < 270 && RPS.Heading() > 90) ? 180 : 0;
+
+    // Check if receiving proper RPS coordinates and whether the robot is within an acceptable range
+    while(RPS.X() < x_coordinate - threshold || RPS.X() > x_coordinate + threshold)
+    {
+        if (!rps_valid()) {
+            continue;
+        }
+
+        rps_log_once();
+        if(RPS.X() < x_coordinate)
+        {
+            LCD.WriteLine("Going Backwards");
+            // Pulse the motors for a short duration in the correct direction
+            pulse_forward(-power, PULSE_TIME);
+        }
+        else if(RPS.X() > x_coordinate)
+        {
+            LCD.WriteLine("Going Forwards");
+            // Pulse the motors for a short duration in the correct direction
+            pulse_forward(power, PULSE_TIME);
+        }
+
+        check_heading(target_heading);
+
+        Sleep(RPS_WAIT_TIME_IN_SEC);
+    }
+}
+
+
+/* 
+ * Use RPS to move to the desired y_coordinate based on the orientation of the QR code
+ */
+void check_y(float y_coordinate, int orientation)
+{
+    // Determine the direction of the motors based on the orientation of the QR code
+    int power = PULSE_POWER;
+    if(orientation == MINUS){
+        power = -PULSE_POWER;
+    }
+
+    float threshold = .25;
+
+    float target_heading = (RPS.Heading() < 360 && RPS.Heading() > 180) ? 270 : 90;
+
+    // Check if receiving proper RPS coordinates and whether the robot is within an acceptable range
+    while(RPS.Y() < y_coordinate - threshold || RPS.Y() > y_coordinate + threshold)
+    {
+        if (!rps_valid()) {
+            continue;
+        }
+
+        if(RPS.Y() > y_coordinate)
+        {
+            // Pulse the motors for a short duration in the correct direction
+            pulse_forward(-power, PULSE_TIME);
+        }
+        else if(RPS.Y() < y_coordinate)
+        {
+            // Pulse the motors for a short duration in the correct direction
+           pulse_forward(power, PULSE_TIME);
+        }
+
+        check_heading(target_heading);
+        
+        Sleep(RPS_WAIT_TIME_IN_SEC);
+    }
+}
+
 enum drive_direction {
     DD_FORE = 1,
     DD_BACK = -1
@@ -111,7 +343,7 @@ enum drive_direction {
  * - dir    -> Direction to drive in  (either forward or backward)
  * - inches -> distance to drive 
 */
-void drive_inch(drive_direction dir, float inches, float power_percent = 40.0, float timeout = POS_INF) {
+void drive_inch(drive_direction dir, float inches, float power_percent = 40.0, float timeout = POS_INF, float angle = POS_INF) {
     PIDController controller(KP, KI, KD);
 
 
@@ -132,6 +364,16 @@ void drive_inch(drive_direction dir, float inches, float power_percent = 40.0, f
 
         left_motor.SetPercent(power_percent * dir);
         right_motor.SetPercent(-(power_percent + power_difference) * dir);
+
+        LCD.Clear();
+        LCD.Write("Right: ");
+        LCD.WriteLine(right_enc.Counts());
+        LCD.Write("Left: ");
+        LCD.WriteLine(left_enc.Counts());
+    }
+
+    if (angle <= 360) {
+        check_heading(angle);
     }
 
     PHIL_LOG("End drive_fore_inch");
@@ -357,235 +599,37 @@ void lift_basket(float timeout = POS_INF) {
     right_lift.Stop();
 }
 
-void rps_log_once() {
-    LCD.Write("X: ");
-    LCD.WriteLine(RPS.X());
-    LCD.Write("Y: ");
-    LCD.WriteLine(RPS.Y());
-    LCD.Write("Heading: ");
-    LCD.WriteLine(RPS.Heading());
-}
+void drive_until_deadzone(drive_direction dir, float inches, float angle = POS_INF) {
+    PIDController controller(KP, KI, KD);
 
-void rps_log() {
-    while(true) {
-        LCD.Clear();
-        LCD.Write("X: ");
-        LCD.WriteLine(RPS.X());
-        LCD.Write("Y: ");
-        LCD.WriteLine(RPS.Y());
-        LCD.Write("Heading: ");
-        LCD.WriteLine(RPS.Heading());
-        Sleep(.2);
+    const float TARGET_PERCENT = 25.;
+
+    float target_pos = inches * ENC_PER_INCH;
+
+    left_enc.ResetCounts();
+    right_enc.ResetCounts();
+
+    PHIL_LOG("Start drive_until_deadzone");
+
+    while (!in_deadzone() && left_enc.Counts() < target_pos) {
+        float power_difference = 0;
+
+        left_motor.SetPercent(TARGET_PERCENT);
+        right_motor.SetPercent(-(TARGET_PERCENT + power_difference));
     }
-}
 
-/*
- * Pulse forward a short distance using time
- */
-void pulse_forward(int percent, float seconds) 
-{
-    // Set both motors to desired percent
-    right_motor.SetPercent(-percent);
-    left_motor.SetPercent(percent);
+    if (angle <= 360) {
+        check_heading(angle);
+    }
 
-    // Wait for the correct number of seconds
-    Sleep(seconds);
+    PHIL_LOG("End drive_until_deadzone");
 
-    // Turn off motors
-    right_motor.Stop();
     left_motor.Stop();
-}
-
-/*
- * Pulse counterclockwise a short distance using time
- */
-void pulse_counterclockwise(int percent, float seconds) 
-{
-    // Set both motors to desired percent
-    right_motor.SetPercent(-percent);
-    left_motor.SetPercent(-percent);
-
-    // Wait for the correct number of seconds
-    Sleep(seconds);
-
-    // Turn off motors
     right_motor.Stop();
-    left_motor.Stop();
+    Sleep(.1);
 }
 
-/*
- * Pulse clockwise a short distance using time
- */
-void pulse_clockwise(int percent, float seconds) 
-{
-    // Set both motors to desired percent
-    right_motor.SetPercent(percent);
-    left_motor.SetPercent(percent);
-
-    // Wait for the correct number of seconds
-    Sleep(seconds);
-
-    // Turn off motors
-    right_motor.Stop();
-    left_motor.Stop();
-}
-
-bool rps_valid() {
-    return RPS.X() >= 0 && RPS.Y() >= 0 && RPS.Heading() >= 0;
-}
-
-/* 
- * Use RPS to move to the desired heading
- */
-void check_heading(float heading)
-{
-
-    const float threshold = 2;
-
-    //You will need to fill out this one yourself and take into account
-    //checking for proper RPS data and the edge conditions
-    //(when you want the robot to go to 0 degrees or close to 0 degrees)
-
-    /*
-        SUGGESTED ALGORITHM:
-        1. Check the current orientation of the QR code and the desired orientation of the QR code
-        2. Check if the robot is within the desired threshold for the heading based on the orientation
-        3. Pulse in the correct direction based on the orientation
-    */
-
-    while (true) {
-        LCD.Clear();
-        if (RPS.Heading() < 0) {
-            LCD.WriteLine("Can't Detect QR Code");
-            continue;
-        }
-
-        float current_heading = RPS.Heading();
-        float current_heading_phased_right = current_heading - 360;
-        float current_heading_phased_left = current_heading + 360;
-
-        float diff = heading - current_heading;
-        float diff_phased_right = heading - current_heading_phased_right;
-        float diff_phased_left = heading - current_heading_phased_right;
-
-        LCD.Write("Difference: ");
-        LCD.WriteLine(diff);
-        LCD.Write("Phase R: ");
-        LCD.WriteLine(diff_phased_right);
-        LCD.Write("Phase L: ");
-        LCD.WriteLine(diff_phased_left);
-
-        if (abs(diff_phased_right) < abs(diff)) {
-            diff = diff_phased_right;
-        }
-
-        if (abs(diff_phased_left) < abs(diff)) {
-            diff = diff_phased_left;
-        }
-
-        LCD.Write("\nMin Diff: ");
-        LCD.WriteLine(diff);
-
-        
-        if (diff > threshold) {
-            // target heading is to the left of current heading
-            LCD.WriteLine("difference is greater than threshold");
-            pulse_counterclockwise(PULSE_POWER, PULSE_TIME);
-        } else if (diff < -threshold) {
-            LCD.WriteLine("difference is less than -threshold");
-            //target heading is to the right of current heading
-            pulse_clockwise(PULSE_POWER, PULSE_TIME);
-        } else {
-            break;
-        }
-
-        Sleep(RPS_WAIT_TIME_IN_SEC);
-    }
-}
-
-/* 
- * Use RPS to move to the desired x_coordinate based on the orientation of the QR code
- */
-void check_x(float x_coordinate, int orientation)
-{
-    // Determine the direction of the motors based on the orientation of the QR code 
-    int power = PULSE_POWER;
-    if(orientation == MINUS){
-        power = -PULSE_POWER;
-    }
-
-    float threshold = .5;
-
-    float target_heading = (RPS.Heading() < 270 && RPS.Heading() > 90) ? 180 : 0;
-
-    // Check if receiving proper RPS coordinates and whether the robot is within an acceptable range
-    while(RPS.X() < x_coordinate - threshold || RPS.X() > x_coordinate + threshold)
-    {
-        if (!rps_valid()) {
-            continue;
-        }
-
-        rps_log_once();
-        if(RPS.X() < x_coordinate)
-        {
-            LCD.WriteLine("Going Backwards");
-            // Pulse the motors for a short duration in the correct direction
-            pulse_forward(-power, PULSE_TIME);
-        }
-        else if(RPS.X() > x_coordinate)
-        {
-            LCD.WriteLine("Going Forwards");
-            // Pulse the motors for a short duration in the correct direction
-            pulse_forward(power, PULSE_TIME);
-        }
-
-        check_heading(target_heading);
-
-        Sleep(RPS_WAIT_TIME_IN_SEC);
-    }
-}
-
-
-/* 
- * Use RPS to move to the desired y_coordinate based on the orientation of the QR code
- */
-void check_y(float y_coordinate, int orientation)
-{
-    // Determine the direction of the motors based on the orientation of the QR code
-    int power = PULSE_POWER;
-    if(orientation == MINUS){
-        power = -PULSE_POWER;
-    }
-
-    float threshold = .25;
-
-    float target_heading = (RPS.Heading() < 360 && RPS.Heading() > 180) ? 270 : 90;
-
-    // Check if receiving proper RPS coordinates and whether the robot is within an acceptable range
-    while(RPS.Y() < y_coordinate - threshold || RPS.Y() > y_coordinate + threshold)
-    {
-        if (!rps_valid()) {
-            continue;
-        }
-
-        if(RPS.Y() > y_coordinate)
-        {
-            // Pulse the motors for a short duration in the correct direction
-            pulse_forward(-power, PULSE_TIME);
-        }
-        else if(RPS.Y() < y_coordinate)
-        {
-            // Pulse the motors for a short duration in the correct direction
-           pulse_forward(power, PULSE_TIME);
-        }
-
-        check_heading(target_heading);
-        
-        Sleep(RPS_WAIT_TIME_IN_SEC);
-    }
-}
-
-void drive_until_deadzone(drive_direction dir, float inches) {
+void drive_until_no_deadzone(drive_direction dir, float inches, float angle = POS_INF) {
     PIDController controller(KP, KI, KD);
 
     const float TARGET_PERCENT = 25.;
@@ -597,11 +641,15 @@ void drive_until_deadzone(drive_direction dir, float inches) {
 
     PHIL_LOG("Start drive_until_black");
 
-    while (rps_valid() && left_enc.Counts() < target_pos) {
+    while (in_deadzone() && left_enc.Counts() < target_pos) {
         float power_difference = 0;
 
-        left_motor.SetPercent(TARGET_PERCENT);
-        right_motor.SetPercent(-(TARGET_PERCENT + power_difference));
+        left_motor.SetPercent(TARGET_PERCENT * dir);
+        right_motor.SetPercent(-(TARGET_PERCENT + power_difference) * dir);
+    }
+
+    if (angle <= 360) {
+        check_heading(angle);
     }
 
     PHIL_LOG("End drive_until_black");
@@ -623,60 +671,48 @@ int main(void)
     while(cds_cell[CDS_LEFT].Value() > RED_CUTOFF);
     PHIL_LOG("Starting");
 
+    // Drive to ice cream lever
+    drop_basket(.3);
     drive_inch(DD_FORE, 15);
     turn_degrees(TD_RIGHT, 45);
     check_heading(90);
     drive_inch(DD_FORE, 31, 40);
     turn_degrees(TD_LEFT, 90);
     drive_until_bump(DD_BACK, 20, 30, 10);
-    drive_inch(DD_FORE, 12.5);
-    check_x(17.8, PLUS);
+    drive_inch(DD_FORE, 4);
     turn_degrees(TD_RIGHT, 90);
-    check_heading(90);
-    drive_inch(DD_FORE, 6);
-    if (RPS.CurrentRegionLetter() == 'G' || RPS.CurrentRegionLetter() == 'F' ) {
-        check_y(59.7, PLUS);
-    } else {
-        check_y(60.55, PLUS);
-    }
-    
-    check_heading(90);
-    //drop_basket(3);
-    //drive_inch(DD_FORE, 5);
-    lift_basket(.6);
-    drive_inch(DD_FORE, 3, 25, 2);
-    lift_basket(.5);
-    turn_degrees(TD_RIGHT, 30, 80.0);
-    lift_basket(.4);
-    drive_inch(DD_FORE, 3, 25, 1);
-
-    drive_inch(DD_BACK, 2);
-    turn_degrees(TD_LEFT, 40);
-    drive_inch(DD_BACK, 3);
-    drop_basket(.3);
-    check_heading(90);
-    drive_inch(DD_BACK, 5);
+    drive_inch(DD_FORE, 5);
+    check_y(62.3, PLUS);
     turn_degrees(TD_LEFT, 90);
     check_heading(180);
-    drive_until_bump(DD_BACK, 20);
-    drop_basket(.75);
-    lift_basket(.5);
-    drive_inch(DD_FORE, 4);
-    check_x(27.5, PLUS);
+    drive_until_bump(DD_BACK, 20, 30, 3);
+
+    // Ice Cream Lever
+    drive_until_deadzone(DD_FORE, 15);
+    drive_inch(DD_FORE, 3);
+    Timer timer;
+    timer.reset();
+    drop_basket(2); // Lower lever
+    drive_inch(DD_BACK, 5);
+    drop_basket(.2);
+    drive_inch(DD_FORE, 5);
+    while (timer.get() < 8.0); // Wait for 7 seconds to pass
+    lift_basket(.6);
+    drop_basket(.5);
+
+    // Drive to Final Button
+    turn_degrees(TD_RIGHT, 45);
+    drive_inch(DD_BACK, 10);
+    turn_degrees(TD_LEFT, 45);
+    check_x(14, PLUS);
     turn_degrees(TD_RIGHT, 90);
     check_heading(90);
-    drive_inch(DD_FORE, 2);
-    check_y(58.9, PLUS);
-    turn_degrees(TD_LEFT, 80);
-    
-    lift_basket(.6);
-    check_heading(170);
-    drive_until_deadzone(DD_FORE, 20);
-    drive_inch(DD_FORE, 4);
-    drop_basket(.7);
-    lift_basket(.7);
 
-    while(true);
+    drive_inch(DD_BACK, 36, 40);
+    check_y(18.8, PLUS);
+    turn_degrees(TD_LEFT, 45);
+    check_heading(135);
+    drive_inch(DD_BACK, 15, 50, 5);
     
     return 0;
 }
