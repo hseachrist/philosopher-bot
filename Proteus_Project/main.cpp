@@ -11,7 +11,6 @@
 
 #define PI 3.14159
 
-
 #define WHEEL_RADIUS (2.5/2)
 // number of encoders per inch
 #define ENC_PER_INCH (316/(2*WHEEL_RADIUS*(PI)))
@@ -675,9 +674,32 @@ int main(void)
     LCD.SetFontColor(WHITE);
     RPS.InitializeTouchMenu();
 
+    RPSPositions::calibrate();
+    RPSPositions::print(RPS_FIRST_TURN);
+
     PHIL_LOG("Waiting for Start");
     while(cds_cell[CDS_LEFT].Value() > RED_CUTOFF);
     PHIL_LOG("Starting");
+
+    
+    // Up Ramp
+    RPSPose target_pose = RPSPositions::get(RPS_FIRST_TURN);
+    drop_basket(.3);
+    drive_inch(DD_FORE, 15);
+    check_x(target_pose.x(), PLUS, RPSPositions::get(RPS_START).angle());
+    turn_degrees(TD_RIGHT, 45);
+    check_heading(target_pose.angle());
+    
+    // Go to Sink
+    target_pose = RPSPositions::get(RPS_DROP_BASKET);
+    drive_inch(DD_FORE, 26, 40);
+    check_y(target_pose.y(), PLUS);
+    turn_degrees(TD_RIGHT, 87);
+    check_heading(target_pose.angle());
+    drive_until_bump(DD_FORE, 5, 30, 1.5);
+    drop_basket(3);
+
+    while(true);
 
     // Drive to ice cream lever
     drop_basket(.3);

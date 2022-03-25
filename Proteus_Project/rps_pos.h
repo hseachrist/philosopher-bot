@@ -12,4 +12,23 @@ private:
     float m_x, m_y, m_theta;
 };
 
+enum RPSPoseType {
+    RPS_FIRST_TURN = 0,
+    RPS_DROP_BASKET,
+    RPS_START,
+    NUM_RPS_POSE
+};
+
+class RPSPositions {
+public:
+    static void calibrate();
+    static const char *get_name(RPSPoseType);
+    static RPSPose get(RPSPoseType);
+    static void print(RPSPoseType);
+private:
+    static RPSPose pos_list[NUM_RPS_POSE];
+    static const char *pos_names[NUM_RPS_POSE];
+};
+
+
 #endif
