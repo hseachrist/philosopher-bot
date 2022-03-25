@@ -6,6 +6,7 @@
 #include <cmath>
 
 #include "pid.h"
+#include "rps_pos.h"
 #include "timer.h"
 
 #define PI 3.14159
@@ -253,7 +254,7 @@ void check_heading(float heading)
 /* 
  * Use RPS to move to the desired x_coordinate based on the orientation of the QR code
  */
-void check_x(float x_coordinate, int orientation)
+void check_x(float x_coordinate, int orientation, float heading = POS_INF)
 {
     // Determine the direction of the motors based on the orientation of the QR code 
     int power = PULSE_POWER;
@@ -261,9 +262,13 @@ void check_x(float x_coordinate, int orientation)
         power = -PULSE_POWER;
     }
 
-    float threshold = .5;
+    float threshold = .5, target_heading;
 
-    float target_heading = (RPS.Heading() < 270 && RPS.Heading() > 90) ? 180 : 0;
+    if (heading > 360) {
+        target_heading = (RPS.Heading() < 270 && RPS.Heading() > 90) ? 180 : 0;
+    } else {
+        target_heading = heading;
+    }
 
     // Check if receiving proper RPS coordinates and whether the robot is within an acceptable range
     while(RPS.X() < x_coordinate - threshold || RPS.X() > x_coordinate + threshold)
@@ -296,7 +301,7 @@ void check_x(float x_coordinate, int orientation)
 /* 
  * Use RPS to move to the desired y_coordinate based on the orientation of the QR code
  */
-void check_y(float y_coordinate, int orientation)
+void check_y(float y_coordinate, int orientation, float heading = POS_INF)
 {
     // Determine the direction of the motors based on the orientation of the QR code
     int power = PULSE_POWER;
@@ -304,10 +309,13 @@ void check_y(float y_coordinate, int orientation)
         power = -PULSE_POWER;
     }
 
-    float threshold = .25;
+    float threshold = .25, target_heading;
 
-    float target_heading = (RPS.Heading() < 360 && RPS.Heading() > 180) ? 270 : 90;
-
+    if (heading > 360) {
+        target_heading = (RPS.Heading() < 270 && RPS.Heading() > 90) ? 180 : 0;
+    } else {
+        target_heading = heading;
+    }
     // Check if receiving proper RPS coordinates and whether the robot is within an acceptable range
     while(RPS.Y() < y_coordinate - threshold || RPS.Y() > y_coordinate + threshold)
     {
