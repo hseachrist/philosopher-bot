@@ -30,7 +30,6 @@
                             } \
                         } while(0);
 
-#define POS_INF (1.0 / 0.0)
 
 #define RPS_WAIT_TIME_IN_SEC 0.35
 
@@ -253,7 +252,7 @@ void check_heading(float heading)
 /* 
  * Use RPS to move to the desired x_coordinate based on the orientation of the QR code
  */
-void check_x(float x_coordinate, int orientation, float heading = POS_INF)
+void check_x(float x_coordinate, int orientation, float heading = INFINITY)
 {
     // Determine the direction of the motors based on the orientation of the QR code 
     int power = PULSE_POWER;
@@ -300,7 +299,7 @@ void check_x(float x_coordinate, int orientation, float heading = POS_INF)
 /* 
  * Use RPS to move to the desired y_coordinate based on the orientation of the QR code
  */
-void check_y(float y_coordinate, int orientation, float heading = POS_INF)
+void check_y(float y_coordinate, int orientation, float heading = INFINITY)
 {
     // Determine the direction of the motors based on the orientation of the QR code
     int power = PULSE_POWER;
@@ -311,10 +310,11 @@ void check_y(float y_coordinate, int orientation, float heading = POS_INF)
     float threshold = .25, target_heading;
 
     if (heading > 360) {
-        target_heading = (RPS.Heading() < 270 && RPS.Heading() > 90) ? 180 : 0;
+        target_heading = (RPS.Heading() < 360 && RPS.Heading() > 180) ? 270 : 90;
     } else {
         target_heading = heading;
     }
+
     // Check if receiving proper RPS coordinates and whether the robot is within an acceptable range
     while(RPS.Y() < y_coordinate - threshold || RPS.Y() > y_coordinate + threshold)
     {
@@ -350,7 +350,7 @@ enum drive_direction {
  * - dir    -> Direction to drive in  (either forward or backward)
  * - inches -> distance to drive 
 */
-void drive_inch(drive_direction dir, float inches, float power_percent = 40.0, float timeout = POS_INF, float angle = POS_INF) {
+void drive_inch(drive_direction dir, float inches, float power_percent = 40.0, float timeout = INFINITY, float angle = INFINITY) {
     PIDController controller(KP, KI, KD);
 
 
@@ -391,12 +391,21 @@ void drive_inch(drive_direction dir, float inches, float power_percent = 40.0, f
 }
 
 float min_cds() {
-    float min = POS_INF;
+    float min = INFINITY;
     for (int i = 0; i < NUM_CDS; ++i) {
         min = (min > cds_cell[i].Value()) ? cds_cell[i].Value() : min;
     }
 
     return min;
+}
+
+float max_cds() {
+    float max = 0.0;
+    for (int i = 0; i < NUM_CDS; ++i) {
+        max = (max < cds_cell[i].Value()) ? cds_cell[i].Value() : max;
+    }
+
+    return max;
 }
 
 void wait_until_touch() {
@@ -412,7 +421,7 @@ enum turn_direction {
     TD_RIGHT = -1
 };
 
-void turn_degrees(turn_direction turn_dir, float degrees, float power_percent = 30.0, float timeout = POS_INF) {
+void turn_degrees(turn_direction turn_dir, float degrees, float power_percent = 30.0, float timeout = INFINITY) {
     float radians = degrees * PI / 180.0;
     float circumference = radians * (TRACK_WIDTH / 2);
     float target_pos = circumference * ENC_PER_INCH;
@@ -442,7 +451,7 @@ void turn_degrees(turn_direction turn_dir, float degrees, float power_percent = 
 }
 
 bool detected_black() {
-    if (min_cds() > BLACK_CUTOFF) {
+    if (max_cds() > BLACK_CUTOFF) {
         PHIL_LOG("Black Detected")
         PHIL_LOG("Voltage Below")
         PHIL_LOG(min_cds());
@@ -480,7 +489,7 @@ void drive_until_black(float inches) {
 }
 
 // drive until both bump switches are pressed
-void drive_until_bump(drive_direction dir, float inches_cutoff, float percent_power = 30.0, float timeout = POS_INF) {
+void drive_until_bump(drive_direction dir, float inches_cutoff, float percent_power = 30.0, float timeout = INFINITY) {
     PIDController controller(KP, KI, KD);
     const float TARGET_PERCENT = 30.;
 
@@ -584,7 +593,7 @@ void ramp() {
     Sleep(.1);
 }
 
-void drop_basket(float timeout = POS_INF) {
+void drop_basket(float timeout = INFINITY) {
     const float TARGET_POWER = 50.;
     left_lift.SetPercent(-TARGET_POWER);
     right_lift.SetPercent(TARGET_POWER);
@@ -595,7 +604,7 @@ void drop_basket(float timeout = POS_INF) {
     right_lift.Stop();
 }
 
-void lift_basket(float timeout = POS_INF) {
+void lift_basket(float timeout = INFINITY) {
     const float TARGET_POWER = 60;
     left_lift.SetPercent(TARGET_POWER);
     right_lift.SetPercent(-TARGET_POWER);
@@ -606,7 +615,18 @@ void lift_basket(float timeout = POS_INF) {
     right_lift.Stop();
 }
 
-void drive_until_deadzone(drive_direction dir, float inches, float angle = POS_INF) {
+void idle_basket() {
+    const float TARGET_POWER = 3;
+    left_lift.SetPercent(-TARGET_POWER);
+    right_lift.SetPercent(TARGET_POWER);
+}
+
+void stop_lift() {
+    left_lift.Stop();
+    right_lift.Stop();
+}
+
+void drive_until_deadzone(drive_direction dir, float inches, float angle = INFINITY) {
     PIDController controller(KP, KI, KD);
 
     const float TARGET_PERCENT = 25.;
@@ -636,7 +656,7 @@ void drive_until_deadzone(drive_direction dir, float inches, float angle = POS_I
     Sleep(.1);
 }
 
-void drive_until_no_deadzone(drive_direction dir, float inches, float angle = POS_INF) {
+void drive_until_no_deadzone(drive_direction dir, float inches, float angle = INFINITY) {
     PIDController controller(KP, KI, KD);
 
     const float TARGET_PERCENT = 25.;
@@ -675,7 +695,10 @@ int main(void)
     RPS.InitializeTouchMenu();
 
     RPSPositions::calibrate();
+    idle_basket();
     RPSPositions::print(RPS_FIRST_TURN);
+    RPSPositions::print(RPS_BASKET_LINEUP);
+    RPSPositions::print(RPS_START);
 
     PHIL_LOG("Waiting for Start");
     while(cds_cell[CDS_LEFT].Value() > RED_CUTOFF);
@@ -684,19 +707,22 @@ int main(void)
     
     // Up Ramp
     RPSPose target_pose = RPSPositions::get(RPS_FIRST_TURN);
-    drop_basket(.3);
     drive_inch(DD_FORE, 15);
+
     check_x(target_pose.x(), PLUS, RPSPositions::get(RPS_START).angle());
     turn_degrees(TD_RIGHT, 45);
     check_heading(target_pose.angle());
     
     // Go to Sink
-    target_pose = RPSPositions::get(RPS_DROP_BASKET);
+    target_pose = RPSPositions::get(RPS_BASKET_LINEUP);
     drive_inch(DD_FORE, 26, 40);
     check_y(target_pose.y(), PLUS);
-    turn_degrees(TD_RIGHT, 87);
+    turn_degrees(TD_LEFT, 87);
     check_heading(target_pose.angle());
-    drive_until_bump(DD_FORE, 5, 30, 1.5);
+    drive_until_black(7);
+    drive_inch(DD_FORE, 2);
+    turn_degrees(TD_LEFT, 87);
+    drive_until_bump(DD_FORE, 5, 30, 1);
     drop_basket(3);
 
     while(true);

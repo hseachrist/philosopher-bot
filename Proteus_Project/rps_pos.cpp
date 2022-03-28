@@ -9,7 +9,7 @@ RPSPose RPSPositions::pos_list[NUM_RPS_POSE];
 
 const char *RPSPositions::pos_names[NUM_RPS_POSE] = {
     "RPS_FIRST_TURN",
-    "RPS_DROP_BASKET",
+    "RPS_BASKET_LINEUP",
     "RPS_START"
 };
 
@@ -63,19 +63,19 @@ void RPSPositions::calibrate() {
 
             switch (tap_state) {
             case LAST_PRESS:
-                if (LCD.Touch(&x, &y)) {
+                if (!LCD.Touch(&x, &y)) {
                     tap_state = NOT_PRESSED;
                 }
                 break;
 
             case NOT_PRESSED:
-                if (!LCD.Touch(&x, &y)) {
+                if (LCD.Touch(&x, &y)) {
                     tap_state = PRESSED;
                 }
                 break;
             
             case PRESSED:
-                if (LCD.Touch(&x, &y)) {
+                if (!LCD.Touch(&x, &y)) {
                     tap_state = RELEASED;
                 }
                 break;
@@ -95,7 +95,7 @@ void RPSPositions::print(RPSPoseType t) {
     const size_t BUF_SIZE = 1024;
     char buf[BUF_SIZE];
     RPSPose pose = RPSPositions::get(t);
-    snprintf(buf, BUF_SIZE, "%s: (%f, %f, %f)", RPSPositions::get_name(t), pose.x(), pose.y(), pose.angle());
+    snprintf(buf, BUF_SIZE, "%s:\n\t(%.1f, %.1f, %.1f)", RPSPositions::get_name(t), pose.x(), pose.y(), pose.angle());
     LCD.WriteLine(buf);
 }
 
