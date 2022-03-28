@@ -710,9 +710,6 @@ int main(void)
 
     RPSPositions::calibrate();
     idle_basket(BD_DROP);
-    RPSPositions::print(RPS_FIRST_TURN);
-    RPSPositions::print(RPS_BASKET_LINEUP);
-    RPSPositions::print(RPS_START);
 
     PHIL_LOG("Waiting for Start");
     while(cds_cell[CDS_LEFT].Value() > RED_CUTOFF);
@@ -736,6 +733,50 @@ int main(void)
     turn_degrees(TD_LEFT, 80);
     drive_until_bump(DD_FORE, 5, 30, 1);
     drop_basket(5, 70);
+    Sleep(1.0);
+
+    // Go to Hot Plate
+    target_pose = RPSPositions::get(RPS_STOVE_LIFT);
+    drive_inch(DD_BACK, 10, 40);
+    turn_degrees(TD_RIGHT, 80);
+    drive_until_bump(DD_BACK, 40, 30, 10);
+    drive_inch(DD_FORE, 12.5);
+    check_x(target_pose.x(), PLUS);
+    turn_degrees(TD_RIGHT, 90);
+    check_heading(90);
+    drive_inch(DD_FORE, 6);
+    check_y(target_pose.y(), PLUS);
+    
+    check_heading(target_pose.angle());
+    //drop_basket(3);
+    //drive_inch(DD_FORE, 5);
+    lift_basket(.6);
+    drive_inch(DD_FORE, 3, 25, 2);
+    lift_basket(.5);
+    turn_degrees(TD_RIGHT, 30, 80.0);
+    lift_basket(.4);
+    drive_inch(DD_FORE, 3, 25, 1);
+
+    // Flip over Hot plate
+    target_pose = RPSPositions::get(RPS_STOVE_DROP);
+    drive_inch(DD_BACK, 2);
+    turn_degrees(TD_LEFT, 40);
+    drive_inch(DD_BACK, 3);
+    drop_basket(.3);
+    check_heading(90);
+    drive_inch(DD_BACK, 5);
+    turn_degrees(TD_LEFT, 90);
+    check_heading(180);
+    drive_until_bump(DD_BACK, 20);
+    drop_basket(.75);
+    lift_basket(.5);
+    drive_inch(DD_FORE, 4);
+    check_x(target_pose.x(), PLUS);
+    turn_degrees(TD_RIGHT, 90);
+    check_heading(target_pose.angle());
+    drive_inch(DD_FORE, 2);
+    check_y(target_pose.y(), PLUS);
+    turn_degrees(TD_LEFT, 80);
 
     while(true);
 
