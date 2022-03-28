@@ -379,7 +379,7 @@ void drive_inch(drive_direction dir, float inches, float power_percent = 40.0, f
         LCD.WriteLine(left_enc.Counts());
     }
 
-    if (angle <= 360) {
+    if (angle <= 360 && rps_valid()) {
         check_heading(angle);
     }
 
@@ -593,10 +593,9 @@ void ramp() {
     Sleep(.1);
 }
 
-void drop_basket(float timeout = INFINITY) {
-    const float TARGET_POWER = 50.;
-    left_lift.SetPercent(-TARGET_POWER);
-    right_lift.SetPercent(TARGET_POWER);
+void drop_basket(float timeout = INFINITY, float power = 50.) {
+    left_lift.SetPercent(-power);
+    right_lift.SetPercent(power);
     Timer timer;
     timer.reset();
     while (bump_switches[BS_LIFT_DOWN].Value() && timer.get() < timeout);
@@ -615,10 +614,25 @@ void lift_basket(float timeout = INFINITY) {
     right_lift.Stop();
 }
 
-void idle_basket() {
-    const float TARGET_POWER = 3;
-    left_lift.SetPercent(-TARGET_POWER);
-    right_lift.SetPercent(TARGET_POWER);
+enum basket_direction {
+    BD_LIFT = 1,
+    BD_DROP = -1,
+};
+
+void idle_basket(basket_direction dir = BD_DROP) {
+    const float TARGET_POWER = 4;
+    left_lift.SetPercent(TARGET_POWER * dir);
+    right_lift.SetPercent(-TARGET_POWER * dir);
+}
+
+void move_basket_away_from_qr() {
+    const float TARGET_POWER = 50.;
+    while (RPS.X() < 0) {
+        left_lift.SetPercent(-TARGET_POWER);
+        right_lift.SetPercent(TARGET_POWER);
+    }
+    Sleep(.2);
+    idle_basket(BD_LIFT);
 }
 
 void stop_lift() {
@@ -645,7 +659,7 @@ void drive_until_deadzone(drive_direction dir, float inches, float angle = INFIN
         right_motor.SetPercent(-(TARGET_PERCENT + power_difference));
     }
 
-    if (angle <= 360) {
+    if (angle <= 360 && rps_valid()) {
         check_heading(angle);
     }
 
@@ -695,7 +709,7 @@ int main(void)
     RPS.InitializeTouchMenu();
 
     RPSPositions::calibrate();
-    idle_basket();
+    idle_basket(BD_DROP);
     RPSPositions::print(RPS_FIRST_TURN);
     RPSPositions::print(RPS_BASKET_LINEUP);
     RPSPositions::print(RPS_START);
@@ -704,26 +718,24 @@ int main(void)
     while(cds_cell[CDS_LEFT].Value() > RED_CUTOFF);
     PHIL_LOG("Starting");
 
-    
     // Up Ramp
     RPSPose target_pose = RPSPositions::get(RPS_FIRST_TURN);
     drive_inch(DD_FORE, 15);
-
     check_x(target_pose.x(), PLUS, RPSPositions::get(RPS_START).angle());
     turn_degrees(TD_RIGHT, 45);
     check_heading(target_pose.angle());
     
     // Go to Sink
     target_pose = RPSPositions::get(RPS_BASKET_LINEUP);
-    drive_inch(DD_FORE, 26, 40);
+    drive_inch(DD_FORE, 33, 40);
     check_y(target_pose.y(), PLUS);
-    turn_degrees(TD_LEFT, 87);
+    turn_degrees(TD_LEFT, 85);
     check_heading(target_pose.angle());
     drive_until_black(7);
-    drive_inch(DD_FORE, 2);
-    turn_degrees(TD_LEFT, 87);
+    drive_inch(DD_FORE, 7);
+    turn_degrees(TD_LEFT, 80);
     drive_until_bump(DD_FORE, 5, 30, 1);
-    drop_basket(3);
+    drop_basket(5, 70);
 
     while(true);
 

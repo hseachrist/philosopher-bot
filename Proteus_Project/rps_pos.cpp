@@ -42,6 +42,7 @@ void RPSPositions::calibrate() {
 
     for (int i = 0; i < NUM_RPS_POSE; ++i) {
         ScreenTapState tap_state = LAST_PRESS;
+        LCD.WriteRC("                  ", 2, 0);
         LCD.WriteRC(get_name((RPSPoseType) i), 2, 0);
         Timer refresh;
 
