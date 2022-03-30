@@ -79,7 +79,13 @@ void RPSPositions::calibrate() {
             
             case PRESSED:
                 if (!LCD.Touch(&x, &y)) {
-                    tap_state = RELEASED;
+                    if (RPS.X() < 0) {
+                        LCD.WriteRC("INVALID RPS POSE!", 6, 0);
+                        tap_state = LAST_PRESS;
+                    } else {
+                        LCD.WriteRC("                  ", 6, 0);
+                        tap_state = RELEASED;
+                    }
                 }
                 break;
             default:

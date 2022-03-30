@@ -16,6 +16,7 @@
 #define ENC_PER_INCH (316/(2*WHEEL_RADIUS*(PI)))
 // The distance between the wheels
 #define TRACK_WIDTH (7.3)
+#define QR_CENTER_OF_ROT_DIST (2.5)
 #define RED_CUTOFF (1.1)
 #define BLACK_CUTOFF (2.7)
 
@@ -603,10 +604,9 @@ void drop_basket(float timeout = INFINITY, float power = 50.) {
     right_lift.Stop();
 }
 
-void lift_basket(float timeout = INFINITY) {
-    const float TARGET_POWER = 60;
-    left_lift.SetPercent(TARGET_POWER);
-    right_lift.SetPercent(-TARGET_POWER);
+void lift_basket(float timeout = INFINITY, float power = 60.) {
+    left_lift.SetPercent(power);
+    right_lift.SetPercent(-power);
     Timer timer;
     timer.reset();
     while (bump_switches[BS_LIFT_UP].Value() && timer.get() < timeout);
@@ -702,62 +702,72 @@ void drive_until_no_deadzone(drive_direction dir, float inches, float angle = IN
 
 int main(void)
 {
-    // Wait for user input
     LCD.SetBackgroundColor(BLACK);
     LCD.Clear();
     LCD.SetFontColor(WHITE);
+
     RPS.InitializeTouchMenu();
 
     RPSPositions::calibrate();
+/*
     idle_basket(BD_DROP);
 
     PHIL_LOG("Waiting for Start");
     while(cds_cell[CDS_LEFT].Value() > RED_CUTOFF);
     PHIL_LOG("Starting");
-
+*/
     // Up Ramp
     RPSPose target_pose = RPSPositions::get(RPS_FIRST_TURN);
-    drive_inch(DD_FORE, 15);
+    /*drive_inch(DD_FORE, 14);
     check_x(target_pose.x(), PLUS, RPSPositions::get(RPS_START).angle());
-    turn_degrees(TD_RIGHT, 45);
+    turn_degrees(TD_RIGHT, 43);
     check_heading(target_pose.angle());
     
     // Go to Sink
     target_pose = RPSPositions::get(RPS_BASKET_LINEUP);
-    drive_inch(DD_FORE, 33, 40);
+    drive_inch(DD_FORE, 31, 40);
     check_y(target_pose.y(), PLUS);
     turn_degrees(TD_LEFT, 85);
     check_heading(target_pose.angle());
     drive_until_black(7);
-    drive_inch(DD_FORE, 7);
+    drive_inch(DD_FORE, 6.4);
     turn_degrees(TD_LEFT, 80);
     drive_until_bump(DD_FORE, 5, 30, 1);
-    drop_basket(5, 70);
+    stop_lift();
+    drop_basket(3, 70);
     Sleep(1.0);
+    lift_basket(3);*/
 
     // Go to Hot Plate
+    wait_until_touch();
     target_pose = RPSPositions::get(RPS_STOVE_LIFT);
-    drive_inch(DD_BACK, 10, 40);
+    drive_inch(DD_BACK, 4, 40);
     turn_degrees(TD_RIGHT, 80);
-    drive_until_bump(DD_BACK, 40, 30, 10);
-    drive_inch(DD_FORE, 12.5);
-    check_x(target_pose.x(), PLUS);
-    turn_degrees(TD_RIGHT, 90);
-    check_heading(90);
-    drive_inch(DD_FORE, 6);
+    drive_until_bump(DD_BACK, 40, 50, 10);
+    
+    float current_pose = RPS.X();
+    float inches_to_drive = (current_pose - (target_pose.x() - QR_CENTER_OF_ROT_DIST)) * .8;
+    drive_inch(DD_FORE, inches_to_drive);
+    check_x(target_pose.x() - QR_CENTER_OF_ROT_DIST, PLUS);
+    turn_degrees(TD_RIGHT, 84);
+    check_heading(target_pose.angle());
+
+    current_pose = RPS.Y();
+    inches_to_drive = (target_pose.y() - current_pose) * .8;
+    drive_inch(DD_FORE, inches_to_drive);
     check_y(target_pose.y(), PLUS);
     
     check_heading(target_pose.angle());
     //drop_basket(3);
     //drive_inch(DD_FORE, 5);
-    lift_basket(.6);
-    drive_inch(DD_FORE, 3, 25, 2);
     lift_basket(.5);
+    drive_inch(DD_FORE, 3, 25, 2);
     turn_degrees(TD_RIGHT, 30, 80.0);
-    lift_basket(.4);
+    lift_basket(.3, 80);
     drive_inch(DD_FORE, 3, 25, 1);
 
-    // Flip over Hot plate
+    // Flip over Hot plate (not needed for now)
+    /*
     target_pose = RPSPositions::get(RPS_STOVE_DROP);
     drive_inch(DD_BACK, 2);
     turn_degrees(TD_LEFT, 40);
@@ -766,62 +776,41 @@ int main(void)
     check_heading(90);
     drive_inch(DD_BACK, 5);
     turn_degrees(TD_LEFT, 90);
-    check_heading(180);
     drive_until_bump(DD_BACK, 20);
     drop_basket(.75);
     lift_basket(.5);
     drive_inch(DD_FORE, 4);
-    check_x(target_pose.x(), PLUS);
-    turn_degrees(TD_RIGHT, 90);
+
+    current_pose = RPS.X();
+    inches_to_drive = (current_pose - (target_pose.x() - QR_CENTER_OF_ROT_DIST)) * .8;
+    drive_inch(DD_FORE, inches_to_drive);
+    check_x(target_pose.x()  - QR_CENTER_OF_ROT_DIST, PLUS);
+
+    turn_degrees(TD_RIGHT, 85);
     check_heading(target_pose.angle());
-    drive_inch(DD_FORE, 2);
+
+    current_pose = RPS.Y();
+    inches_to_drive = (target_pose.y() - current_pose) * .8;
+    drive_inch(DD_FORE, inches_to_drive);
     check_y(target_pose.y(), PLUS);
-    turn_degrees(TD_LEFT, 80);
-
-    while(true);
-
-    // Drive to ice cream lever
-    drop_basket(.3);
-    drive_inch(DD_FORE, 15);
-    turn_degrees(TD_RIGHT, 45);
-    check_heading(90);
-    drive_inch(DD_FORE, 31, 40);
-    turn_degrees(TD_LEFT, 90);
-    drive_until_bump(DD_BACK, 20, 30, 10);
-    drive_inch(DD_FORE, 4);
-    turn_degrees(TD_RIGHT, 90);
-    drive_inch(DD_FORE, 5);
-    check_y(62.3, PLUS);
-    turn_degrees(TD_LEFT, 90);
-    check_heading(180);
-    drive_until_bump(DD_BACK, 20, 30, 3);
+    turn_degrees(TD_LEFT, 85);
+    check_heading(175);
+    */
 
     // Ice Cream Lever
+    drive_inch(DD_BACK, 2);
+    float angle_turn = (180 - RPS.Heading()) * .8;
+    turn_degrees(TD_LEFT, angle_turn, 50);
     drive_until_deadzone(DD_FORE, 15);
     drive_inch(DD_FORE, 3);
     Timer timer;
-    timer.reset();
     drop_basket(2); // Lower lever
     drive_inch(DD_BACK, 5);
+    timer.reset();
     drop_basket(.2);
     drive_inch(DD_FORE, 5);
-    while (timer.get() < 8.0); // Wait for 7 seconds to pass
-    lift_basket(.6);
+    while (timer.get() < 8.0); // Wait for 8 seconds to pass
+    lift_basket(.6); // lift lever
     drop_basket(.5);
-
-    // Drive to Final Button
-    turn_degrees(TD_RIGHT, 45);
-    drive_inch(DD_BACK, 10);
-    turn_degrees(TD_LEFT, 45);
-    check_x(14, PLUS);
-    turn_degrees(TD_RIGHT, 90);
-    check_heading(90);
-
-    drive_inch(DD_BACK, 36, 40);
-    check_y(18.8, PLUS);
-    turn_degrees(TD_LEFT, 45);
-    check_heading(135);
-    drive_inch(DD_BACK, 15, 50, 5);
-    
     return 0;
 }
