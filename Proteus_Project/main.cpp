@@ -372,12 +372,6 @@ void drive_inch(drive_direction dir, float inches, float power_percent = 40.0, f
 
         left_motor.SetPercent(power_percent * dir);
         right_motor.SetPercent(-(power_percent + power_difference) * dir);
-
-        LCD.Clear();
-        LCD.Write("Right: ");
-        LCD.WriteLine(right_enc.Counts());
-        LCD.Write("Left: ");
-        LCD.WriteLine(left_enc.Counts());
     }
 
     if (angle <= 360 && rps_valid()) {
@@ -398,6 +392,45 @@ float min_cds() {
     }
 
     return min;
+}
+
+float drive_inch_min_cds(drive_direction dir, float inches, float power_percent = 40.0, float timeout = INFINITY, float angle = INFINITY) {
+    PIDController controller(KP, KI, KD);
+
+
+    float target_pos = inches * ENC_PER_INCH;
+
+    left_enc.ResetCounts();
+    right_enc.ResetCounts();
+    float min_cds_val;
+
+    Timer timer;
+    timer.reset();
+
+    PHIL_LOG("Start drive_fore_inch");
+
+    while (left_enc.Counts() < target_pos && timer.get() < timeout) {
+        // Find difference in encoder distance and update powers to correct it.
+        // TODO: Implement motion profile?
+        float power_difference = controller.update(right_enc.Counts(), left_enc.Counts());
+
+        left_motor.SetPercent(power_percent * dir);
+        right_motor.SetPercent(-(power_percent + power_difference) * dir);
+
+        min_cds_val = (min_cds() < min_cds_val) ? min_cds() : min_cds_val;
+    }
+
+    if (angle <= 360 && rps_valid()) {
+        check_heading(angle);
+    }
+
+    PHIL_LOG("End drive_fore_inch");
+
+    left_motor.Stop();
+    right_motor.Stop();
+    Sleep(.1);
+
+    return min_cds_val;
 }
 
 float max_cds() {
@@ -466,7 +499,7 @@ bool detected_black() {
 void drive_until_black(float inches) {
     PIDController controller(KP, KI, KD);
 
-    const float TARGET_PERCENT = 25.;
+    const float TARGET_PERCENT = 40;
 
     float target_pos = inches * ENC_PER_INCH;
 
@@ -670,7 +703,7 @@ void drive_until_deadzone(drive_direction dir, float inches, float angle = INFIN
     Sleep(.1);
 }
 
-void drive_until_no_deadzone(drive_direction dir, float inches, float angle = INFINITY) {
+void drive_until_no_deadzone(drive_direction dir, float inches = INFINITY, float angle = INFINITY) {
     PIDController controller(KP, KI, KD);
 
     const float TARGET_PERCENT = 25.;
@@ -689,10 +722,6 @@ void drive_until_no_deadzone(drive_direction dir, float inches, float angle = IN
         right_motor.SetPercent(-(TARGET_PERCENT + power_difference) * dir);
     }
 
-    if (angle <= 360) {
-        check_heading(angle);
-    }
-
     PHIL_LOG("End drive_until_black");
 
     left_motor.Stop();
@@ -709,51 +738,70 @@ int main(void)
     RPS.InitializeTouchMenu();
 
     RPSPositions::calibrate();
-/*
     idle_basket(BD_DROP);
 
     PHIL_LOG("Waiting for Start");
     while(cds_cell[CDS_LEFT].Value() > RED_CUTOFF);
     PHIL_LOG("Starting");
-*/
+
     // Up Ramp
     RPSPose target_pose = RPSPositions::get(RPS_FIRST_TURN);
-    /*drive_inch(DD_FORE, 14);
+    drive_inch(DD_FORE, 14);
     check_x(target_pose.x(), PLUS, RPSPositions::get(RPS_START).angle());
-    turn_degrees(TD_RIGHT, 43);
+    turn_degrees(TD_RIGHT, 41);
     check_heading(target_pose.angle());
     
+
+
+
     // Go to Sink
     target_pose = RPSPositions::get(RPS_BASKET_LINEUP);
-    drive_inch(DD_FORE, 31, 40);
+    drive_inch(DD_FORE, 33, 40);
     check_y(target_pose.y(), PLUS);
     turn_degrees(TD_LEFT, 85);
     check_heading(target_pose.angle());
+    float angle_turn;
+    if (rps_valid()) {
+        angle_turn = (270 - RPS.Heading()) * 80./90;
+    } else {
+        angle_turn = 80;
+    }
     drive_until_black(7);
     drive_inch(DD_FORE, 6.4);
-    turn_degrees(TD_LEFT, 80);
+    turn_degrees(TD_LEFT, angle_turn);
     drive_until_bump(DD_FORE, 5, 30, 1);
     stop_lift();
     drop_basket(3, 70);
-    Sleep(1.0);
-    lift_basket(3);*/
+    Sleep(.3);
+    lift_basket(2.5);
+
+
+
 
     // Go to Hot Plate
-    wait_until_touch();
     target_pose = RPSPositions::get(RPS_STOVE_LIFT);
+    if (rps_valid()) {
+        angle_turn = (RPS.Heading() - 180) * 85./90;
+    } else {
+        angle_turn = 80;
+    }
     drive_inch(DD_BACK, 4, 40);
-    turn_degrees(TD_RIGHT, 80);
+    turn_degrees(TD_RIGHT, angle_turn);
+    drop_basket(1.7);
+    drive_inch(DD_BACK, 10);
+    check_heading(180);
     drive_until_bump(DD_BACK, 40, 50, 10);
+    drop_basket(1.7);
     
     float current_pose = RPS.X();
-    float inches_to_drive = (current_pose - (target_pose.x() - QR_CENTER_OF_ROT_DIST)) * .8;
+    float inches_to_drive = (current_pose - (target_pose.x() - QR_CENTER_OF_ROT_DIST)) * .9;
     drive_inch(DD_FORE, inches_to_drive);
     check_x(target_pose.x() - QR_CENTER_OF_ROT_DIST, PLUS);
     turn_degrees(TD_RIGHT, 84);
     check_heading(target_pose.angle());
 
     current_pose = RPS.Y();
-    inches_to_drive = (target_pose.y() - current_pose) * .8;
+    inches_to_drive = (target_pose.y() - current_pose) * .65;
     drive_inch(DD_FORE, inches_to_drive);
     check_y(target_pose.y(), PLUS);
     
@@ -763,54 +811,114 @@ int main(void)
     lift_basket(.5);
     drive_inch(DD_FORE, 3, 25, 2);
     turn_degrees(TD_RIGHT, 30, 80.0);
-    lift_basket(.3, 80);
+    lift_basket(.5, 90);
     drive_inch(DD_FORE, 3, 25, 1);
 
-    // Flip over Hot plate (not needed for now)
-    /*
-    target_pose = RPSPositions::get(RPS_STOVE_DROP);
-    drive_inch(DD_BACK, 2);
-    turn_degrees(TD_LEFT, 40);
-    drive_inch(DD_BACK, 3);
-    drop_basket(.3);
-    check_heading(90);
-    drive_inch(DD_BACK, 5);
-    turn_degrees(TD_LEFT, 90);
-    drive_until_bump(DD_BACK, 20);
-    drop_basket(.75);
-    lift_basket(.5);
-    drive_inch(DD_FORE, 4);
 
-    current_pose = RPS.X();
-    inches_to_drive = (current_pose - (target_pose.x() - QR_CENTER_OF_ROT_DIST)) * .8;
-    drive_inch(DD_FORE, inches_to_drive);
-    check_x(target_pose.x()  - QR_CENTER_OF_ROT_DIST, PLUS);
 
-    turn_degrees(TD_RIGHT, 85);
-    check_heading(target_pose.angle());
 
-    current_pose = RPS.Y();
-    inches_to_drive = (target_pose.y() - current_pose) * .8;
-    drive_inch(DD_FORE, inches_to_drive);
-    check_y(target_pose.y(), PLUS);
-    turn_degrees(TD_LEFT, 85);
-    check_heading(175);
-    */
 
     // Ice Cream Lever
     drive_inch(DD_BACK, 2);
-    float angle_turn = (180 - RPS.Heading()) * .8;
+    angle_turn = (165 - RPS.Heading());
     turn_degrees(TD_LEFT, angle_turn, 50);
+    drive_inch(DD_BACK, 4);
+    drop_basket(1);
+    lift_basket(.7);
+    check_heading(165);
     drive_until_deadzone(DD_FORE, 15);
-    drive_inch(DD_FORE, 3);
+    drive_inch(DD_FORE, 3.5);
     Timer timer;
-    drop_basket(2); // Lower lever
-    drive_inch(DD_BACK, 5);
+    drop_basket(1); // Lower lever
+    drive_inch(DD_BACK, 6);
     timer.reset();
     drop_basket(.2);
     drive_inch(DD_FORE, 5);
     while (timer.get() < 8.0); // Wait for 8 seconds to pass
     lift_basket(.6); // lift lever
     drop_basket(.5);
+
+
+
+
+    // Jukebox
+    turn_degrees(TD_RIGHT, 70);
+    drive_until_no_deadzone(DD_BACK);
+    drive_inch(DD_BACK, 3);
+    angle_turn = (180 - RPS.Heading()) * .9;
+    turn_degrees(TD_LEFT, angle_turn);
+    check_heading(180);
+    drive_until_bump(DD_BACK, 20, 50, 5);
+
+    target_pose = RPSPositions::get(RPS_FIRST_TURN);
+    inches_to_drive = (RPS.X() - (target_pose.x() - QR_CENTER_OF_ROT_DIST));
+    drive_inch(DD_FORE, inches_to_drive);
+    check_x(target_pose.x() - QR_CENTER_OF_ROT_DIST, PLUS);
+
+    angle_turn = (RPS.Heading() - target_pose.angle()) * 80./90;
+    turn_degrees(TD_RIGHT, angle_turn);
+    check_heading(target_pose.angle());
+
+    inches_to_drive = (RPS.Y() - target_pose.y() + QR_CENTER_OF_ROT_DIST) * .9;
+    drive_inch(DD_BACK, inches_to_drive);
+    check_y(target_pose.y() + QR_CENTER_OF_ROT_DIST, PLUS);
+
+    angle_turn = ((target_pose.angle() + 90) - RPS.Heading()) * 80./90;
+    turn_degrees(TD_LEFT, angle_turn);
+    check_heading(target_pose.angle() + 90);
+
+    lift_basket(3);
+    drive_until_black(8);
+    drive_inch(DD_FORE, QR_CENTER_OF_ROT_DIST);
+
+    target_pose = RPSPositions::get(RPS_JUKEBOX);
+    angle_turn = (target_pose.angle() - RPS.Heading()) * 80./90;
+    turn_degrees(TD_LEFT, angle_turn);
+    check_heading(target_pose.angle());
+
+    inches_to_drive = (RPS.Y() - target_pose.y()) * .9;
+    float cds_val = drive_inch_min_cds(DD_FORE, inches_to_drive);
+    check_y(target_pose.y(), PLUS);
+
+    if (cds_val < RED_CUTOFF) {
+        turn_degrees(TD_RIGHT, 15);
+    } else {
+        turn_degrees(TD_LEFT, 15);
+    }
+
+    drive_until_black(10);
+    drive_inch(DD_FORE, QR_CENTER_OF_ROT_DIST);
+
+    angle_turn = abs((target_pose.angle() - RPS.Heading()) * 80./90);
+    if (RPS.Heading() > target_pose.angle()) {
+        turn_degrees(TD_RIGHT, angle_turn);
+    } else {
+        turn_degrees(TD_LEFT, angle_turn);
+    }
+    check_heading(target_pose.angle());
+    drive_until_bump(DD_FORE, 6, 80, 1);
+
+
+
+
+
+    // TICKET
+    drive_inch(DD_BACK, 3);
+    angle_turn = (RPS.Heading() - 180) * 80./90;
+    turn_degrees(TD_RIGHT, angle_turn);
+    check_heading(180);
+
+    drive_until_bump(DD_BACK, 40, 60, 6);
+    drop_basket(1.7);
+    drive_inch(DD_FORE, 3);
+    turn_degrees(TD_RIGHT, 100);
+    drive_until_bump(DD_FORE, 8, 60, 2);
+    turn_degrees(TD_LEFT, 80, 50, .8);
+    turn_degrees(TD_RIGHT, 90, 50, .8);
+
+    // FINAL BUTTON
+    drive_inch(DD_BACK, 20, 70, 2);
+
+
     return 0;
 }

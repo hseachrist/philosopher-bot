@@ -16,7 +16,7 @@ enum RPSPoseType {
     RPS_FIRST_TURN = 0,
     RPS_BASKET_LINEUP,
     RPS_STOVE_LIFT,
-    RPS_STOVE_DROP,
+    RPS_JUKEBOX,
     RPS_START,
     NUM_RPS_POSE
 };
