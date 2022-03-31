@@ -215,13 +215,6 @@ void check_heading(float heading)
         float diff_phased_right = heading - current_heading_phased_right;
         float diff_phased_left = heading - current_heading_phased_right;
 
-        LCD.Write("Difference: ");
-        LCD.WriteLine(diff);
-        LCD.Write("Phase R: ");
-        LCD.WriteLine(diff_phased_right);
-        LCD.Write("Phase L: ");
-        LCD.WriteLine(diff_phased_left);
-
         if (abs(diff_phased_right) < abs(diff)) {
             diff = diff_phased_right;
         }
@@ -230,16 +223,11 @@ void check_heading(float heading)
             diff = diff_phased_left;
         }
 
-        LCD.Write("\nMin Diff: ");
-        LCD.WriteLine(diff);
-
         
         if (diff > threshold) {
             // target heading is to the left of current heading
-            LCD.WriteLine("difference is greater than threshold");
             pulse_counterclockwise(PULSE_POWER, PULSE_TIME);
         } else if (diff < -threshold) {
-            LCD.WriteLine("difference is less than -threshold");
             //target heading is to the right of current heading
             pulse_clockwise(PULSE_POWER, PULSE_TIME);
         } else {
@@ -320,6 +308,8 @@ void check_y(float y_coordinate, int orientation, float heading = INFINITY)
     while(RPS.Y() < y_coordinate - threshold || RPS.Y() > y_coordinate + threshold)
     {
         if (!rps_valid()) {
+            LCD.Clear();
+            LCD.WriteLine("RPS Invalid");
             continue;
         }
 
@@ -337,6 +327,12 @@ void check_y(float y_coordinate, int orientation, float heading = INFINITY)
         check_heading(target_heading);
         
         Sleep(RPS_WAIT_TIME_IN_SEC);
+
+        LCD.Write("Target: ");
+        LCD.WriteLine(y_coordinate);
+        LCD.Write("Current: ");
+        LCD.WriteLine(RPS.Y());
+
     }
 }
 
@@ -637,6 +633,12 @@ void drop_basket(float timeout = INFINITY, float power = 50.) {
     right_lift.Stop();
 }
 
+void drop_basket_async(float power = 60.) {
+    left_lift.SetPercent(-power);
+    right_lift.SetPercent(power);
+}
+
+
 void lift_basket(float timeout = INFINITY, float power = 60.) {
     left_lift.SetPercent(power);
     right_lift.SetPercent(-power);
@@ -645,6 +647,11 @@ void lift_basket(float timeout = INFINITY, float power = 60.) {
     while (bump_switches[BS_LIFT_UP].Value() && timer.get() < timeout);
     left_lift.Stop();
     right_lift.Stop();
+}
+
+void lift_basket_async(float power = 60.) {
+    left_lift.SetPercent(power);
+    right_lift.SetPercent(-power);
 }
 
 enum basket_direction {
@@ -744,19 +751,30 @@ int main(void)
     while(cds_cell[CDS_LEFT].Value() > RED_CUTOFF);
     PHIL_LOG("Starting");
 
-    // Up Ramp
+    /*
+    * --------------
+    *   GO UP RAMP
+    * --------------
+    */
     RPSPose target_pose = RPSPositions::get(RPS_FIRST_TURN);
     drive_inch(DD_FORE, 14);
     check_x(target_pose.x(), PLUS, RPSPositions::get(RPS_START).angle());
-    turn_degrees(TD_RIGHT, 41);
+    turn_degrees(TD_RIGHT, 39);
     check_heading(target_pose.angle());
     
 
 
 
-    // Go to Sink
+    /*
+    * --------------
+    *   GO TO SINK
+    * --------------
+    */
     target_pose = RPSPositions::get(RPS_BASKET_LINEUP);
-    drive_inch(DD_FORE, 33, 40);
+    drive_inch(DD_FORE, 34, 40);
+    if (in_deadzone()) {
+        drive_until_no_deadzone(DD_BACK, 2);
+    }
     check_y(target_pose.y(), PLUS);
     turn_degrees(TD_LEFT, 85);
     check_heading(target_pose.angle());
@@ -771,28 +789,43 @@ int main(void)
     turn_degrees(TD_LEFT, angle_turn);
     drive_until_bump(DD_FORE, 5, 30, 1);
     stop_lift();
+    LCD.WriteLine("Dropping basket");
     drop_basket(3, 70);
-    Sleep(.3);
-    lift_basket(2.5);
+    Sleep(1.0);
+
+    LCD.WriteLine("Lifting Basket");
+    lift_basket_async();
+    Timer timer;
+    timer.reset();
 
 
 
-
-    // Go to Hot Plate
-    target_pose = RPSPositions::get(RPS_STOVE_LIFT);
+    /*
+    * --------------
+    *   GO TO HOTPLATE
+    * --------------
+    */
+    target_pose = RPSPositions::get(RPS_STOVE_LIFT); 
     if (rps_valid()) {
         angle_turn = (RPS.Heading() - 180) * 85./90;
     } else {
         angle_turn = 80;
     }
+    // drive back from sink and lift the arm
     drive_inch(DD_BACK, 4, 40);
+    while (timer.get() < 2.5);
+    stop_lift();
+
+    // Turn and go to right wall
     turn_degrees(TD_RIGHT, angle_turn);
-    drop_basket(1.7);
+    drop_basket_async();
+    timer.reset();
     drive_inch(DD_BACK, 10);
     check_heading(180);
+    while (timer.get() < 2);
     drive_until_bump(DD_BACK, 40, 50, 10);
-    drop_basket(1.7);
     
+    // Line up with Hot plate
     float current_pose = RPS.X();
     float inches_to_drive = (current_pose - (target_pose.x() - QR_CENTER_OF_ROT_DIST)) * .9;
     drive_inch(DD_FORE, inches_to_drive);
@@ -806,8 +839,8 @@ int main(void)
     check_y(target_pose.y(), PLUS);
     
     check_heading(target_pose.angle());
-    //drop_basket(3);
-    //drive_inch(DD_FORE, 5);
+
+    // Lift hotplate
     lift_basket(.5);
     drive_inch(DD_FORE, 3, 25, 2);
     turn_degrees(TD_RIGHT, 30, 80.0);
@@ -818,7 +851,11 @@ int main(void)
 
 
 
-    // Ice Cream Lever
+    /*
+    * --------------
+    *   ICECREAM LEVER
+    * --------------
+    */
     drive_inch(DD_BACK, 2);
     angle_turn = (165 - RPS.Heading());
     turn_degrees(TD_LEFT, angle_turn, 50);
@@ -828,66 +865,67 @@ int main(void)
     check_heading(165);
     drive_until_deadzone(DD_FORE, 15);
     drive_inch(DD_FORE, 3.5);
-    Timer timer;
     drop_basket(1); // Lower lever
     drive_inch(DD_BACK, 6);
     timer.reset();
     drop_basket(.2);
     drive_inch(DD_FORE, 5);
-    while (timer.get() < 8.0); // Wait for 8 seconds to pass
+    while (timer.get() < 6.0); // Wait for 8 seconds to pass
     lift_basket(.6); // lift lever
     drop_basket(.5);
 
 
 
 
-    // Jukebox
-    turn_degrees(TD_RIGHT, 70);
+    /*
+    * --------------
+    *   JUKEBOX
+    * --------------
+    */
+    // Drive away from icecream lever
+    target_pose = RPSPositions::get(RPS_FIRST_TURN); // We want to go to the same location as the initial turn, so we use that position
+    turn_degrees(TD_RIGHT, 80);
     drive_until_no_deadzone(DD_BACK);
-    drive_inch(DD_BACK, 3);
-    angle_turn = (180 - RPS.Heading()) * .9;
-    turn_degrees(TD_LEFT, angle_turn);
-    check_heading(180);
-    drive_until_bump(DD_BACK, 20, 50, 5);
-
-    target_pose = RPSPositions::get(RPS_FIRST_TURN);
-    inches_to_drive = (RPS.X() - (target_pose.x() - QR_CENTER_OF_ROT_DIST));
-    drive_inch(DD_FORE, inches_to_drive);
-    check_x(target_pose.x() - QR_CENTER_OF_ROT_DIST, PLUS);
-
-    angle_turn = (RPS.Heading() - target_pose.angle()) * 80./90;
+    drive_inch(DD_BACK, 5);
+    angle_turn = (RPS.Heading() - 90);
     turn_degrees(TD_RIGHT, angle_turn);
-    check_heading(target_pose.angle());
+    check_heading(90);
 
-    inches_to_drive = (RPS.Y() - target_pose.y() + QR_CENTER_OF_ROT_DIST) * .9;
+    // Drive to bottom of ramp
+    inches_to_drive = (RPS.Y() - target_pose.y() + QR_CENTER_OF_ROT_DIST) * .80;
     drive_inch(DD_BACK, inches_to_drive);
     check_y(target_pose.y() + QR_CENTER_OF_ROT_DIST, PLUS);
 
-    angle_turn = ((target_pose.angle() + 90) - RPS.Heading()) * 80./90;
+    // turn to the black line
+    angle_turn = ((target_pose.angle() + 90) - RPS.Heading());
     turn_degrees(TD_LEFT, angle_turn);
     check_heading(target_pose.angle() + 90);
-
-    lift_basket(3);
+    drop_basket_async();
     drive_until_black(8);
+    stop_lift();
     drive_inch(DD_FORE, QR_CENTER_OF_ROT_DIST);
 
+    // turn towards the jukebox
     target_pose = RPSPositions::get(RPS_JUKEBOX);
     angle_turn = (target_pose.angle() - RPS.Heading()) * 80./90;
     turn_degrees(TD_LEFT, angle_turn);
     check_heading(target_pose.angle());
 
+    // go to light
     inches_to_drive = (RPS.Y() - target_pose.y()) * .9;
-    float cds_val = drive_inch_min_cds(DD_FORE, inches_to_drive);
-    check_y(target_pose.y(), PLUS);
+    drive_inch(DD_FORE, inches_to_drive);
+    check_y(target_pose.y(), MINUS);
+    float cds_val = min_cds();
 
+    // get light value
     if (cds_val < RED_CUTOFF) {
-        turn_degrees(TD_RIGHT, 15);
+        // go to red
+        turn_degrees(TD_RIGHT, 5);
     } else {
-        turn_degrees(TD_LEFT, 15);
+        // go to blue
+        turn_degrees(TD_LEFT, 5);
     }
-
-    drive_until_black(10);
-    drive_inch(DD_FORE, QR_CENTER_OF_ROT_DIST);
+    drive_inch(DD_FORE, 1);
 
     angle_turn = abs((target_pose.angle() - RPS.Heading()) * 80./90);
     if (RPS.Heading() > target_pose.angle()) {
@@ -896,28 +934,45 @@ int main(void)
         turn_degrees(TD_LEFT, angle_turn);
     }
     check_heading(target_pose.angle());
-    drive_until_bump(DD_FORE, 6, 80, 1);
+    lift_basket(.1);
+    drive_inch(DD_FORE, 3, 60, 1);
 
 
 
 
 
-    // TICKET
+    /*
+    * --------------
+    *   TICKET
+    * --------------
+    */
+    // drive to other wall
     drive_inch(DD_BACK, 3);
-    angle_turn = (RPS.Heading() - 180) * 80./90;
-    turn_degrees(TD_RIGHT, angle_turn);
+    angle_turn = (RPS.Heading() - 180) * 90./90;
+    turn_degrees(TD_RIGHT, angle_turn, 60);
     check_heading(180);
-
     drive_until_bump(DD_BACK, 40, 60, 6);
-    drop_basket(1.7);
+    lift_basket(.3);
+    
+    // turn to ticket
     drive_inch(DD_FORE, 3);
     turn_degrees(TD_RIGHT, 100);
+    
+    // drive to ticket
     drive_until_bump(DD_FORE, 8, 60, 2);
+    
+    // move ticket
     turn_degrees(TD_LEFT, 80, 50, .8);
     turn_degrees(TD_RIGHT, 90, 50, .8);
+    check_heading(85);
+    drive_inch(DD_BACK, 3);
 
-    // FINAL BUTTON
-    drive_inch(DD_BACK, 20, 70, 2);
+    /*
+    * --------------
+    *   FINAL BUTTON
+    * --------------
+    */
+    drive_inch(DD_BACK, 20, 70, 4);
 
 
     return 0;
