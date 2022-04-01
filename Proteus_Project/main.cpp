@@ -912,9 +912,9 @@ int main(void)
     check_heading(target_pose.angle());
 
     // go to light
-    inches_to_drive = (RPS.Y() - target_pose.y()) * .9;
+    inches_to_drive = -(RPS.Y() - target_pose.y()) * .9;
     drive_inch(DD_FORE, inches_to_drive);
-    check_y(target_pose.y(), MINUS);
+    check_y(target_pose.y(), PLUS);
     float cds_val = min_cds();
 
     // get light value
