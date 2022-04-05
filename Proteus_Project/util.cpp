@@ -1,13 +1,10 @@
 #include "util.h"
+#include <cmath>
 
-// I don't think the standard library is available on the Proteus, so here is a square root
-// function that we'll need
-//
 // Square root approximation copied from wikipedia
 // https://en.wikipedia.org/wiki/Methods_of_computing_square_roots#Approximations_that_depend_on_the_floating_point_representation
 //
-// I'm not actually sure if this is useful to use a square root approximation
-// But that's fine because it makes me look smart
+// This was written when I assumed cmath was not available on the proteus
 float sqrt_approx(float z) {
     union { float f; int i; } val = {z};	/* Convert type, preserving bit pattern */
 	/*
@@ -25,4 +22,8 @@ float sqrt_approx(float z) {
 
 	return val.f;		/* Interpret again as float */
 
+}
+
+float sigmoid(float z) {
+	return (1.0/(1.0 + exp(-z)) - .5) * 2;
 }

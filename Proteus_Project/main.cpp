@@ -3,11 +3,13 @@
 #include <FEHMotor.h>
 #include <FEHUtility.h>
 #include <FEHRPS.h>
+#include <FEHBuzzer.h>
 #include <cmath>
 
 #include "pid.h"
 #include "rps_pos.h"
 #include "timer.h"
+#include "util.h"
 
 #define PI 3.14159
 
@@ -365,6 +367,7 @@ void drive_inch(drive_direction dir, float inches, float power_percent = 40.0, f
         // Find difference in encoder distance and update powers to correct it.
         // TODO: Implement motion profile?
         float power_difference = controller.update(right_enc.Counts(), left_enc.Counts());
+        power_difference = 5 * sigmoid(power_difference);
 
         left_motor.SetPercent(power_percent * dir);
         right_motor.SetPercent(-(power_percent + power_difference) * dir);
@@ -409,6 +412,7 @@ float drive_inch_min_cds(drive_direction dir, float inches, float power_percent 
         // Find difference in encoder distance and update powers to correct it.
         // TODO: Implement motion profile?
         float power_difference = controller.update(right_enc.Counts(), left_enc.Counts());
+        power_difference = 5 * sigmoid(power_difference);
 
         left_motor.SetPercent(power_percent * dir);
         right_motor.SetPercent(-(power_percent + power_difference) * dir);
@@ -468,6 +472,7 @@ void turn_degrees(turn_direction turn_dir, float degrees, float power_percent = 
     
     while (left_enc.Counts() < target_pos && timer.get() < timeout) {
         float power_difference = controller.update(right_enc.Counts(), left_enc.Counts());
+        power_difference = 5 * sigmoid(power_difference);
 
         left_motor.SetPercent(-power_percent * turn_dir);
         right_motor.SetPercent(-(power_percent + power_difference) * turn_dir);
@@ -478,6 +483,49 @@ void turn_degrees(turn_direction turn_dir, float degrees, float power_percent = 
     left_motor.Stop();
     right_motor.Stop();
     Sleep(.1);
+}
+
+void turn_to_angle(float angle, float modifier = 1.0, float power_percent = 30.0, float backup_angle = -1, float timeout = INFINITY) {
+    float angle_to_turn = 0.0;
+    if (!rps_valid()) {
+        Buzzer.Tone(FEHBuzzer::E4, .125);
+        Buzzer.Tone(FEHBuzzer::Bf4, .125);
+        if (backup_angle > 0) {
+            angle_to_turn = backup_angle;
+        } else {
+            angle_to_turn = angle;
+        }
+    } else {
+        float current_heading = RPS.Heading();
+        float current_heading_phased_right = current_heading - 360;
+        float current_heading_phased_left = current_heading + 360;
+
+        float diff = angle - current_heading;
+        float diff_phased_right = angle - current_heading_phased_right;
+        float diff_phased_left = angle - current_heading_phased_right;
+
+        if (abs(diff_phased_right) < abs(diff)) {
+            diff = diff_phased_right;
+        }
+
+        if (abs(diff_phased_left) < abs(diff)) {
+            diff = diff_phased_left;
+        }
+
+        diff *= modifier;
+
+        angle_to_turn = diff;
+    }
+
+    turn_direction dir = TD_LEFT;
+    if (angle_to_turn < 0) {
+        angle_to_turn *= -1;
+        dir = TD_RIGHT;
+    }
+
+    turn_degrees(dir, angle_to_turn, power_percent, timeout);
+
+    check_heading(angle);
 }
 
 bool detected_black() {
@@ -540,6 +588,7 @@ void drive_until_bump(drive_direction dir, float inches_cutoff, float percent_po
     // While less than tick threshold and the front bumpers aren't pressed
     while (left_enc.Counts() < target_pos && (bump_switches[right_bs].Value() || bump_switches[left_bs].Value()) && timer.get() < timeout) {
         float power_difference = controller.update(right_enc.Counts(), left_enc.Counts());
+        power_difference = 5 * sigmoid(power_difference);
 
         if (bump_switches[left_bs].Value()){
             left_motor.SetPercent(percent_power * dir);
@@ -623,12 +672,16 @@ void ramp() {
     Sleep(.1);
 }
 
-void drop_basket(float timeout = INFINITY, float power = 50.) {
+void drop_basket(float timeout = INFINITY, float power = 50., bool check_switch = true) {
     left_lift.SetPercent(-power);
     right_lift.SetPercent(power);
     Timer timer;
     timer.reset();
-    while (bump_switches[BS_LIFT_DOWN].Value() && timer.get() < timeout);
+    while (timer.get() < timeout) {
+        if (check_switch && !bump_switches[BS_LIFT_DOWN].Value()) {
+            break;
+        }
+    }
     left_lift.Stop();
     right_lift.Stop();
 }
@@ -759,9 +812,7 @@ int main(void)
     RPSPose target_pose = RPSPositions::get(RPS_FIRST_TURN);
     drive_inch(DD_FORE, 14);
     check_x(target_pose.x(), PLUS, RPSPositions::get(RPS_START).angle());
-    turn_degrees(TD_RIGHT, 39);
-    check_heading(target_pose.angle());
-    
+    turn_to_angle(target_pose.angle(), .8, 40);
 
 
 
@@ -776,28 +827,30 @@ int main(void)
         drive_until_no_deadzone(DD_BACK, 2);
     }
     check_y(target_pose.y(), PLUS);
-    turn_degrees(TD_LEFT, 85);
-    check_heading(target_pose.angle());
+    turn_to_angle(target_pose.angle(), .9, 40);
+
     float angle_turn;
     if (rps_valid()) {
-        angle_turn = (270 - RPS.Heading()) * 80./90;
+        angle_turn = (240 - RPS.Heading()) * 80./90;
     } else {
-        angle_turn = 80;
+        angle_turn = 60;
     }
     drive_until_black(7);
-    drive_inch(DD_FORE, 6.4);
+    drive_inch(DD_FORE, 2);
+    
     turn_degrees(TD_LEFT, angle_turn);
+    if (rps_valid()) {
+        check_heading(240);
+    }
     drive_until_bump(DD_FORE, 5, 30, 1);
     stop_lift();
     LCD.WriteLine("Dropping basket");
-    drop_basket(3, 70);
-    Sleep(1.0);
+    drop_basket(2, 70, false);
 
     LCD.WriteLine("Lifting Basket");
     lift_basket_async();
     Timer timer;
     timer.reset();
-
 
 
     /*
@@ -830,8 +883,7 @@ int main(void)
     float inches_to_drive = (current_pose - (target_pose.x() - QR_CENTER_OF_ROT_DIST)) * .9;
     drive_inch(DD_FORE, inches_to_drive);
     check_x(target_pose.x() - QR_CENTER_OF_ROT_DIST, PLUS);
-    turn_degrees(TD_RIGHT, 84);
-    check_heading(target_pose.angle());
+    turn_to_angle(target_pose.angle(), 1, 40);
 
     current_pose = RPS.Y();
     inches_to_drive = (target_pose.y() - current_pose) * .65;
@@ -856,20 +908,29 @@ int main(void)
     *   ICECREAM LEVER
     * --------------
     */
-    drive_inch(DD_BACK, 2);
-    angle_turn = (165 - RPS.Heading());
+    turn_degrees(TD_LEFT, 30, 60, 2);
+    drive_inch(DD_BACK, 4);
+    if (rps_valid) {
+        angle_turn = (165 - RPS.Heading()) * .9;
+    } else {
+        angle_turn = 90;
+    }
     turn_degrees(TD_LEFT, angle_turn, 50);
+    drive_until_no_deadzone(DD_BACK);
+    drive_inch(DD_BACK, 2);
+    check_heading(165);
+
     drive_inch(DD_BACK, 4);
     drop_basket(1);
     lift_basket(.7);
     check_heading(165);
     drive_until_deadzone(DD_FORE, 15);
-    drive_inch(DD_FORE, 3.5);
+    drive_inch(DD_FORE, 4.5);
     drop_basket(1); // Lower lever
     drive_inch(DD_BACK, 6);
     timer.reset();
     drop_basket(.2);
-    drive_inch(DD_FORE, 5);
+    drive_inch(DD_FORE, 6);
     while (timer.get() < 6.0); // Wait for 8 seconds to pass
     lift_basket(.6); // lift lever
     drop_basket(.5);
@@ -884,12 +945,13 @@ int main(void)
     */
     // Drive away from icecream lever
     target_pose = RPSPositions::get(RPS_FIRST_TURN); // We want to go to the same location as the initial turn, so we use that position
-    turn_degrees(TD_RIGHT, 80);
+    turn_degrees(TD_RIGHT, 70);
     drive_until_no_deadzone(DD_BACK);
-    drive_inch(DD_BACK, 5);
-    angle_turn = (RPS.Heading() - 90);
-    turn_degrees(TD_RIGHT, angle_turn);
-    check_heading(90);
+    drive_inch(DD_BACK, 3);
+    turn_to_angle(target_pose.angle() + 90, .95);
+    drive_until_bump(DD_BACK, 20, 50);
+    drive_inch(DD_FORE, target_pose.x(), 50);
+    check_x(target_pose.x(), PLUS);
 
     // Drive to bottom of ramp
     inches_to_drive = (RPS.Y() - target_pose.y() + QR_CENTER_OF_ROT_DIST) * .80;
@@ -897,9 +959,7 @@ int main(void)
     check_y(target_pose.y() + QR_CENTER_OF_ROT_DIST, PLUS);
 
     // turn to the black line
-    angle_turn = ((target_pose.angle() + 90) - RPS.Heading());
-    turn_degrees(TD_LEFT, angle_turn);
-    check_heading(target_pose.angle() + 90);
+    turn_to_angle(target_pose.angle() + 90);
     drop_basket_async();
     drive_until_black(8);
     stop_lift();
@@ -912,29 +972,8 @@ int main(void)
     check_heading(target_pose.angle());
 
     // go to light
-    inches_to_drive = -(RPS.Y() - target_pose.y()) * .9;
+    inches_to_drive = (RPS.Y() - target_pose.y()) * .9;
     drive_inch(DD_FORE, inches_to_drive);
-    check_y(target_pose.y(), PLUS);
-    float cds_val = min_cds();
-
-    // get light value
-    if (cds_val < RED_CUTOFF) {
-        // go to red
-        turn_degrees(TD_RIGHT, 5);
-    } else {
-        // go to blue
-        turn_degrees(TD_LEFT, 5);
-    }
-    drive_inch(DD_FORE, 1);
-
-    angle_turn = abs((target_pose.angle() - RPS.Heading()) * 80./90);
-    if (RPS.Heading() > target_pose.angle()) {
-        turn_degrees(TD_RIGHT, angle_turn);
-    } else {
-        turn_degrees(TD_LEFT, angle_turn);
-    }
-    check_heading(target_pose.angle());
-    lift_basket(.1);
     drive_inch(DD_FORE, 3, 60, 1);
 
 
@@ -948,9 +987,8 @@ int main(void)
     */
     // drive to other wall
     drive_inch(DD_BACK, 3);
-    angle_turn = (RPS.Heading() - 180) * 90./90;
-    turn_degrees(TD_RIGHT, angle_turn, 60);
-    check_heading(180);
+
+    turn_to_angle(180, .9);
     drive_until_bump(DD_BACK, 40, 60, 6);
     lift_basket(.3);
     
