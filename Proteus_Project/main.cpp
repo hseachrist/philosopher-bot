@@ -186,7 +186,7 @@ bool in_deadzone() {
 /* 
  * Use RPS to move to the desired heading
  */
-void check_heading(float heading)
+bool check_heading(float heading, float timeout = INFINITY)
 {
 
     const float threshold = 2;
@@ -202,12 +202,17 @@ void check_heading(float heading)
         3. Pulse in the correct direction based on the orientation
     */
 
-    while (true) {
+   Timer timer;
+   timer.reset();
+    while (timer.get() > timeout) {
+
         LCD.Clear();
         if (RPS.Heading() < 0) {
             LCD.WriteLine("Can't Detect QR Code");
             continue;
         }
+
+        timer.reset();
 
         float current_heading = RPS.Heading();
         float current_heading_phased_right = current_heading - 360;
@@ -587,8 +592,8 @@ void drive_until_bump(drive_direction dir, float inches_cutoff, float percent_po
     
     // While less than tick threshold and the front bumpers aren't pressed
     while (left_enc.Counts() < target_pos && (bump_switches[right_bs].Value() || bump_switches[left_bs].Value()) && timer.get() < timeout) {
-        float power_difference = controller.update(right_enc.Counts(), left_enc.Counts());
-        power_difference = 5 * sigmoid(power_difference);
+        float power_difference = 0; // = controller.update(right_enc.Counts(), left_enc.Counts());
+        // power_difference = 5 * sigmoid(power_difference);
 
         if (bump_switches[left_bs].Value()){
             left_motor.SetPercent(percent_power * dir);
@@ -789,6 +794,7 @@ void drive_until_no_deadzone(drive_direction dir, float inches = INFINITY, float
     Sleep(.1);
 }
 
+
 int main(void)
 {
     LCD.SetBackgroundColor(BLACK);
@@ -893,10 +899,10 @@ int main(void)
     check_heading(target_pose.angle());
 
     // Lift hotplate
-    lift_basket(.5);
+    lift_basket(.5, 80);
     drive_inch(DD_FORE, 3, 25, 2);
-    turn_degrees(TD_RIGHT, 30, 80.0);
     lift_basket(.5, 90);
+    turn_degrees(TD_RIGHT, 30, 80.0);
     drive_inch(DD_FORE, 3, 25, 1);
 
 

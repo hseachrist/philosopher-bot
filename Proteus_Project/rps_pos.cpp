@@ -27,6 +27,9 @@ float RPSPose::angle() {
     return m_theta;
 }
 
+bool RPSPose::valid() {
+    return (m_x >= 0.0) && (m_y >= 0.0) && (m_theta >= 0.0)  ;
+}
 
 enum ScreenTapState {
     LAST_PRESS,
