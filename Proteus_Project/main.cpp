@@ -141,6 +141,11 @@ void pulse_forward(int percent, float seconds)
     left_motor.Stop();
 }
 
+void invalid_rps_tone() {
+        Buzzer.Tone(FEHBuzzer::E4, .125);
+        Buzzer.Tone(FEHBuzzer::Bf4, .125);
+}
+
 /*
  * Pulse counterclockwise a short distance using time
  */
@@ -186,7 +191,7 @@ bool in_deadzone() {
 /* 
  * Use RPS to move to the desired heading
  */
-bool check_heading(float heading, float timeout = INFINITY)
+void check_heading(float heading)
 {
 
     const float threshold = 2;
@@ -201,18 +206,13 @@ bool check_heading(float heading, float timeout = INFINITY)
         2. Check if the robot is within the desired threshold for the heading based on the orientation
         3. Pulse in the correct direction based on the orientation
     */
-
-   Timer timer;
-   timer.reset();
-    while (timer.get() > timeout) {
+    while (true) {
 
         LCD.Clear();
         if (RPS.Heading() < 0) {
             LCD.WriteLine("Can't Detect QR Code");
             continue;
         }
-
-        timer.reset();
 
         float current_heading = RPS.Heading();
         float current_heading_phased_right = current_heading - 360;
@@ -493,8 +493,7 @@ void turn_degrees(turn_direction turn_dir, float degrees, float power_percent = 
 void turn_to_angle(float angle, float modifier = 1.0, float power_percent = 30.0, float backup_angle = -1, float timeout = INFINITY) {
     float angle_to_turn = 0.0;
     if (!rps_valid()) {
-        Buzzer.Tone(FEHBuzzer::E4, .125);
-        Buzzer.Tone(FEHBuzzer::Bf4, .125);
+        invalid_rps_tone();
         if (backup_angle > 0) {
             angle_to_turn = backup_angle;
         } else {
@@ -529,8 +528,11 @@ void turn_to_angle(float angle, float modifier = 1.0, float power_percent = 30.0
     }
 
     turn_degrees(dir, angle_to_turn, power_percent, timeout);
-
-    check_heading(angle);
+    if (rps_valid()) {
+        check_heading(angle);
+    } else {
+        
+    }
 }
 
 bool detected_black() {
@@ -592,8 +594,8 @@ void drive_until_bump(drive_direction dir, float inches_cutoff, float percent_po
     
     // While less than tick threshold and the front bumpers aren't pressed
     while (left_enc.Counts() < target_pos && (bump_switches[right_bs].Value() || bump_switches[left_bs].Value()) && timer.get() < timeout) {
-        float power_difference = 0; // = controller.update(right_enc.Counts(), left_enc.Counts());
-        // power_difference = 5 * sigmoid(power_difference);
+        float power_difference = controller.update(right_enc.Counts(), left_enc.Counts());
+        power_difference = 5 * sigmoid(power_difference);
 
         if (bump_switches[left_bs].Value()){
             left_motor.SetPercent(percent_power * dir);
@@ -800,7 +802,6 @@ int main(void)
     LCD.SetBackgroundColor(BLACK);
     LCD.Clear();
     LCD.SetFontColor(WHITE);
-
     RPS.InitializeTouchMenu();
 
     RPSPositions::calibrate();
@@ -837,9 +838,10 @@ int main(void)
 
     float angle_turn;
     if (rps_valid()) {
-        angle_turn = (240 - RPS.Heading()) * 80./90;
+        angle_turn = (230 - RPS.Heading()) * 80./90;
     } else {
-        angle_turn = 60;
+        invalid_rps_tone();
+        angle_turn = 50;
     }
     drive_until_black(7);
     drive_inch(DD_FORE, 2);
@@ -847,6 +849,8 @@ int main(void)
     turn_degrees(TD_LEFT, angle_turn);
     if (rps_valid()) {
         check_heading(240);
+    } else {
+        invalid_rps_tone();
     }
     drive_until_bump(DD_FORE, 5, 30, 1);
     stop_lift();
@@ -869,6 +873,7 @@ int main(void)
         angle_turn = (RPS.Heading() - 180) * 85./90;
     } else {
         angle_turn = 80;
+        invalid_rps_tone();
     }
     // drive back from sink and lift the arm
     drive_inch(DD_BACK, 4, 40);
@@ -901,8 +906,8 @@ int main(void)
     // Lift hotplate
     lift_basket(.5, 80);
     drive_inch(DD_FORE, 3, 25, 2);
-    lift_basket(.5, 90);
     turn_degrees(TD_RIGHT, 30, 80.0);
+    lift_basket(.5, 90);
     drive_inch(DD_FORE, 3, 25, 1);
 
 
@@ -914,20 +919,22 @@ int main(void)
     *   ICECREAM LEVER
     * --------------
     */
+    drop_basket_async(40);
     turn_degrees(TD_LEFT, 30, 60, 2);
     drive_inch(DD_BACK, 4);
-    if (rps_valid) {
+    if (rps_valid()) {
         angle_turn = (165 - RPS.Heading()) * .9;
     } else {
+        invalid_rps_tone();
         angle_turn = 90;
     }
     turn_degrees(TD_LEFT, angle_turn, 50);
+    stop_lift();
     drive_until_no_deadzone(DD_BACK);
     drive_inch(DD_BACK, 2);
     check_heading(165);
 
     drive_inch(DD_BACK, 4);
-    drop_basket(1);
     lift_basket(.7);
     check_heading(165);
     drive_until_deadzone(DD_FORE, 15);
@@ -937,7 +944,7 @@ int main(void)
     timer.reset();
     drop_basket(.2);
     drive_inch(DD_FORE, 6);
-    while (timer.get() < 6.0); // Wait for 8 seconds to pass
+    while (timer.get() < 6.0); // Wait for 6 seconds to pass
     lift_basket(.6); // lift lever
     drop_basket(.5);
 
@@ -951,13 +958,14 @@ int main(void)
     */
     // Drive away from icecream lever
     target_pose = RPSPositions::get(RPS_FIRST_TURN); // We want to go to the same location as the initial turn, so we use that position
-    turn_degrees(TD_RIGHT, 70);
+    turn_degrees(TD_RIGHT, 35);
     drive_until_no_deadzone(DD_BACK);
     drive_inch(DD_BACK, 3);
     turn_to_angle(target_pose.angle() + 90, .95);
     drive_until_bump(DD_BACK, 20, 50);
-    drive_inch(DD_FORE, target_pose.x(), 50);
+    drive_inch(DD_FORE, RPS.X() - target_pose.x(), 50);
     check_x(target_pose.x(), PLUS);
+    turn_to_angle(target_pose.angle());
 
     // Drive to bottom of ramp
     inches_to_drive = (RPS.Y() - target_pose.y() + QR_CENTER_OF_ROT_DIST) * .80;
@@ -980,7 +988,7 @@ int main(void)
     // go to light
     inches_to_drive = (RPS.Y() - target_pose.y()) * .9;
     drive_inch(DD_FORE, inches_to_drive);
-    drive_inch(DD_FORE, 3, 60, 1);
+    drive_inch(DD_FORE, 6, 60, 2);
 
 
 
@@ -999,17 +1007,21 @@ int main(void)
     lift_basket(.3);
     
     // turn to ticket
-    drive_inch(DD_FORE, 3);
-    turn_degrees(TD_RIGHT, 100);
+    target_pose = RPSPositions::get(RPS_TICKET);
+    drive_inch(DD_FORE, RPS.X() - target_pose.x());
+    turn_to_angle(target_pose.angle());
     
     // drive to ticket
-    drive_until_bump(DD_FORE, 8, 60, 2);
+    drive_until_bump(DD_FORE, 8, 60, 1.5);
     
     // move ticket
+    idle_basket(BD_DROP);
     turn_degrees(TD_LEFT, 80, 50, .8);
     turn_degrees(TD_RIGHT, 90, 50, .8);
-    check_heading(85);
-    drive_inch(DD_BACK, 3);
+    drive_inch(DD_BACK, 1, 60);
+    turn_to_angle(target_pose.angle());
+    drive_inch(DD_BACK, 1, 60);
+    check_heading(RPSPositions::get(RPS_FIRST_TURN).angle());
 
     /*
     * --------------

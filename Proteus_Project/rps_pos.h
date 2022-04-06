@@ -7,6 +7,7 @@ public:
     float x();
     float y();
     float angle();
+    bool valid();
 
 private:
     float m_x, m_y, m_theta;
@@ -17,6 +18,7 @@ enum RPSPoseType {
     RPS_BASKET_LINEUP,
     RPS_STOVE_LIFT,
     RPS_JUKEBOX,
+    RPS_TICKET,
     RPS_START,
     NUM_RPS_POSE
 };

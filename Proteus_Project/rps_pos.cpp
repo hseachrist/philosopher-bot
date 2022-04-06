@@ -12,6 +12,7 @@ const char *RPSPositions::pos_names[NUM_RPS_POSE] = {
     "RPS_BASKET_LINEUP",
     "RPS_STOVE_LIFT",
     "RPS_JUKEBOX",
+    "RPS_TICKET",
     "RPS_START"
 };
 
