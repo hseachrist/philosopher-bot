@@ -191,10 +191,11 @@ bool in_deadzone() {
 /* 
  * Use RPS to move to the desired heading
  */
-void check_heading(float heading)
+void check_heading(float heading, float timeout = INFINITY)
 {
 
     const float threshold = 2;
+    const float NO_DETECT = 2.0;
 
     //You will need to fill out this one yourself and take into account
     //checking for proper RPS data and the edge conditions
@@ -206,13 +207,18 @@ void check_heading(float heading)
         2. Check if the robot is within the desired threshold for the heading based on the orientation
         3. Pulse in the correct direction based on the orientation
     */
-    while (true) {
+
+    Timer no_detect_timer, timeout_timer;
+    no_detect_timer.reset();
+    timeout_timer.reset();
+    while (no_detect_timer.get() < NO_DETECT && timeout_timer.get() < timeout) {
 
         LCD.Clear();
         if (RPS.Heading() < 0) {
             LCD.WriteLine("Can't Detect QR Code");
             continue;
         }
+        no_detect_timer.reset();
 
         float current_heading = RPS.Heading();
         float current_heading_phased_right = current_heading - 360;
@@ -248,8 +254,11 @@ void check_heading(float heading)
 /* 
  * Use RPS to move to the desired x_coordinate based on the orientation of the QR code
  */
-void check_x(float x_coordinate, int orientation, float heading = INFINITY)
+void check_x(float x_coordinate, int orientation, float heading = INFINITY, float timeout = INFINITY)
 {
+
+    const float NO_DETECT = 2.0;
+
     // Determine the direction of the motors based on the orientation of the QR code 
     int power = PULSE_POWER;
     if(orientation == MINUS){
@@ -264,10 +273,15 @@ void check_x(float x_coordinate, int orientation, float heading = INFINITY)
         target_heading = heading;
     }
 
+    Timer no_detect_timer, timeout_timer;
+    no_detect_timer.reset();
+    timeout_timer.reset();
+
     // Check if receiving proper RPS coordinates and whether the robot is within an acceptable range
-    while(RPS.X() < x_coordinate - threshold || RPS.X() > x_coordinate + threshold)
+    while((RPS.X() < x_coordinate - threshold || RPS.X() > x_coordinate + threshold) && no_detect_timer.get() < NO_DETECT && timeout_timer.get() < timeout)
     {
         if (!rps_valid()) {
+            no_detect_timer.reset();
             continue;
         }
 
@@ -295,8 +309,10 @@ void check_x(float x_coordinate, int orientation, float heading = INFINITY)
 /* 
  * Use RPS to move to the desired y_coordinate based on the orientation of the QR code
  */
-void check_y(float y_coordinate, int orientation, float heading = INFINITY)
+void check_y(float y_coordinate, int orientation, float heading = INFINITY, float timeout = INFINITY)
 {
+    const float NO_DETECT = 2.0;
+
     // Determine the direction of the motors based on the orientation of the QR code
     int power = PULSE_POWER;
     if(orientation == MINUS){
@@ -311,8 +327,12 @@ void check_y(float y_coordinate, int orientation, float heading = INFINITY)
         target_heading = heading;
     }
 
+    Timer no_detect_timer, timeout_timer;
+    no_detect_timer.reset();
+    timeout_timer.reset();
+
     // Check if receiving proper RPS coordinates and whether the robot is within an acceptable range
-    while(RPS.Y() < y_coordinate - threshold || RPS.Y() > y_coordinate + threshold)
+    while((RPS.Y() < y_coordinate - threshold || RPS.Y() > y_coordinate + threshold) && no_detect_timer.get() < NO_DETECT && timeout_timer.get() < timeout)
     {
         if (!rps_valid()) {
             LCD.Clear();
@@ -806,9 +826,12 @@ int main(void)
 
     RPSPositions::calibrate();
     idle_basket(BD_DROP);
+    wait_until_touch(); // Final Action
 
+    Timer timer;
+    timer.reset();
     PHIL_LOG("Waiting for Start");
-    while(cds_cell[CDS_LEFT].Value() > RED_CUTOFF);
+    while(cds_cell[CDS_LEFT].Value() > RED_CUTOFF && timer.get() < 30.0);
     PHIL_LOG("Starting");
 
     /*
@@ -859,7 +882,6 @@ int main(void)
 
     LCD.WriteLine("Lifting Basket");
     lift_basket_async();
-    Timer timer;
     timer.reset();
 
 
@@ -919,26 +941,28 @@ int main(void)
     *   ICECREAM LEVER
     * --------------
     */
-    drop_basket_async(40);
+    drop_basket_async(20);
+    timer.reset();
     turn_degrees(TD_LEFT, 30, 60, 2);
     drive_inch(DD_BACK, 4);
     if (rps_valid()) {
-        angle_turn = (165 - RPS.Heading()) * .9;
+        angle_turn = (155 - RPS.Heading()) * .9;
     } else {
         invalid_rps_tone();
         angle_turn = 90;
     }
     turn_degrees(TD_LEFT, angle_turn, 50);
+    while(timer.get() < 3.0);
     stop_lift();
     drive_until_no_deadzone(DD_BACK);
     drive_inch(DD_BACK, 2);
-    check_heading(165);
+    check_heading(155);
 
     drive_inch(DD_BACK, 4);
     lift_basket(.7);
     check_heading(165);
     drive_until_deadzone(DD_FORE, 15);
-    drive_inch(DD_FORE, 4.5);
+    drive_inch(DD_FORE, 5.);
     drop_basket(1); // Lower lever
     drive_inch(DD_BACK, 6);
     timer.reset();
@@ -958,13 +982,13 @@ int main(void)
     */
     // Drive away from icecream lever
     target_pose = RPSPositions::get(RPS_FIRST_TURN); // We want to go to the same location as the initial turn, so we use that position
-    turn_degrees(TD_RIGHT, 35);
+    turn_degrees(TD_RIGHT, 45);
     drive_until_no_deadzone(DD_BACK);
     drive_inch(DD_BACK, 3);
     turn_to_angle(target_pose.angle() + 90, .95);
     drive_until_bump(DD_BACK, 20, 50);
-    drive_inch(DD_FORE, RPS.X() - target_pose.x(), 50);
-    check_x(target_pose.x(), PLUS);
+    drive_inch(DD_FORE, RPS.X() - (target_pose.x() - 1), 50);
+    check_x(target_pose.x() - 1, PLUS, INFINITY, 4);
     turn_to_angle(target_pose.angle());
 
     // Drive to bottom of ramp
@@ -1009,10 +1033,13 @@ int main(void)
     // turn to ticket
     target_pose = RPSPositions::get(RPS_TICKET);
     drive_inch(DD_FORE, RPS.X() - target_pose.x());
+    check_x(target_pose.x(), PLUS);
     turn_to_angle(target_pose.angle());
     
     // drive to ticket
     drive_until_bump(DD_FORE, 8, 60, 1.5);
+    drive_inch(DD_BACK, 2);
+    lift_basket(.3);
     
     // move ticket
     idle_basket(BD_DROP);
@@ -1028,7 +1055,12 @@ int main(void)
     *   FINAL BUTTON
     * --------------
     */
-    drive_inch(DD_BACK, 20, 70, 4);
+    while (true) {
+        drive_until_bump(DD_BACK, 20, 70, 3);
+        drive_inch(DD_FORE, RPS.X() - target_pose.x());
+        check_x(target_pose.x(), PLUS);
+        turn_to_angle(90);
+    }
 
 
     return 0;
