@@ -924,11 +924,13 @@ int main(void)
     drive_inch(DD_FORE, 1);
     check_heading(target_pose.angle());
     target_pose = RPSPositions::get(RPS_FIRST_TURN); // We want to go to the same location as the initial turn, so we use that position
+    drive_until_no_deadzone(DD_BACK);
     drive_inch(DD_FORE, RPS.X() - (target_pose.x() - 1), 50);
     check_x(target_pose.x() - 1, PLUS, INFINITY, 4);
     turn_to_angle(target_pose.angle());
 
     // Drive to bottom of ramp
+    drive_until_no_deadzone(DD_BACK);
     float inches_to_drive = (RPS.Y() - target_pose.y() + QR_CENTER_OF_ROT_DIST) * .80;
     drive_inch(DD_BACK, inches_to_drive);
     check_y(target_pose.y() + QR_CENTER_OF_ROT_DIST, PLUS);
