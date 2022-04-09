@@ -19,8 +19,8 @@
 // The distance between the wheels
 #define TRACK_WIDTH (7.3)
 #define QR_CENTER_OF_ROT_DIST (2.5)
-#define RED_CUTOFF (1.1)
-#define BLACK_CUTOFF (2.7)
+#define RED_CUTOFF (0.6)
+#define BLACK_CUTOFF (3.1)
 
 #define DEBUG_LOG (true)
 
@@ -556,7 +556,7 @@ void turn_to_angle(float angle, float modifier = 1.0, float power_percent = 30.0
 }
 
 bool detected_black() {
-    if (max_cds() > BLACK_CUTOFF) {
+    if (min_cds() > BLACK_CUTOFF) {
         PHIL_LOG("Black Detected")
         PHIL_LOG("Voltage Below")
         PHIL_LOG(min_cds());
@@ -875,8 +875,7 @@ int main(void)
         invalid_rps_tone();
         angle_turn = 50;
     }
-    drive_until_black(7);
-    drive_inch(DD_FORE, 2);
+    drive_inch(DD_FORE, 3);
     
     turn_degrees(TD_LEFT, angle_turn);
     if (rps_valid()) {
@@ -899,6 +898,64 @@ int main(void)
 
 
 
+
+
+    /*
+    * --------------
+    *   GO TO HOTPLATE
+    * --------------
+    */
+    target_pose = RPSPositions::get(RPS_STOVE_LIFT); 
+    if (rps_valid()) {
+        angle_turn = (RPS.Heading() - 180) * 85./90;
+    } else {
+        angle_turn = 80;
+        invalid_rps_tone();
+    }
+    // drive back from sink and lift the arm
+    drive_inch(DD_BACK, 4, 40);
+    while (timer.get() < 2.5);
+    stop_lift();
+
+    // Turn and go to right wall
+    turn_degrees(TD_RIGHT, angle_turn);
+    drop_basket_async();
+    timer.reset();
+    drive_inch(DD_BACK, 10);
+    check_heading(180);
+    while (timer.get() < 2);
+    drive_until_bump(DD_BACK, 40, 50, 4);
+    if (RPS.Heading() > 210) {
+        turn_to_angle(180);
+    }
+    
+    // Line up with Hot plate
+    float current_pose = RPS.X();
+    float inches_to_drive = (current_pose - (target_pose.x() - QR_CENTER_OF_ROT_DIST)) * .9;
+    drive_inch(DD_FORE, inches_to_drive);
+    check_x(target_pose.x() - QR_CENTER_OF_ROT_DIST, PLUS);
+    turn_to_angle(target_pose.angle(), 1, 40);
+
+    current_pose = RPS.Y();
+    inches_to_drive = (target_pose.y() - current_pose) * .65;
+    drive_inch(DD_FORE, inches_to_drive);
+    check_y(target_pose.y(), PLUS);
+    
+    check_heading(target_pose.angle());
+
+    // Lift hotplate
+    lift_basket(.5, 80);
+    drive_inch(DD_FORE, 3, 25, 2);
+    turn_degrees(TD_RIGHT, 30, 80.0);
+    lift_basket(.5, 90);
+    drive_inch(DD_FORE, 3, 25, 1);
+
+
+
+
+
+
+
     /*
     * --------------
     *   JUKEBOX
@@ -907,16 +964,27 @@ int main(void)
     float current_heading = RPS.Heading();
     drive_inch(DD_BACK, .5, 40);
 
+    drop_basket_async(20);
+    timer.reset();
+    turn_degrees(TD_LEFT, 30, 70, 2);
+    drive_inch(DD_BACK, 6);
+
     // Turn and go to right wall
     if (in_deadzone()) {
         drive_until_no_deadzone(DD_FORE, 2);
     }
-    check_y(target_pose.y(), PLUS, current_heading);
-    turn_to_angle(target_pose.angle(), .9, 40, -50);
+    
+    target_pose = RPSPositions::get(RPS_BASKET_LINEUP);
+    turn_to_angle(RPSPositions::get(RPS_STOVE_LIFT).angle());
+    inches_to_drive = RPS.Y() - (target_pose.y() - 4);
+    drive_inch(DD_BACK, inches_to_drive);
+    check_y(target_pose.y() - 4, PLUS, RPSPositions::get(RPS_STOVE_LIFT).angle());
+    turn_to_angle(target_pose.angle(), .9, 70, -50);
+    drive_until_no_deadzone(DD_BACK);
 
     drop_basket_async();
     timer.reset();
-    drive_inch(DD_BACK, 10);
+    drive_inch(DD_BACK, 8);
     check_heading(180, 8);
     while (timer.get() < 2);
     drive_until_bump(DD_BACK, 40, 50, 10);
@@ -925,13 +993,13 @@ int main(void)
     check_heading(target_pose.angle());
     target_pose = RPSPositions::get(RPS_FIRST_TURN); // We want to go to the same location as the initial turn, so we use that position
     drive_until_no_deadzone(DD_BACK);
-    drive_inch(DD_FORE, RPS.X() - (target_pose.x() - 1), 50);
-    check_x(target_pose.x() - 1, PLUS, INFINITY, 4);
+    drive_inch(DD_FORE, RPS.X() - (target_pose.x() - .5), 50);
+    check_x(target_pose.x() - .5, PLUS, INFINITY, 4);
     turn_to_angle(target_pose.angle());
 
     // Drive to bottom of ramp
     drive_until_no_deadzone(DD_BACK);
-    float inches_to_drive = (RPS.Y() - target_pose.y() + QR_CENTER_OF_ROT_DIST) * .80;
+    inches_to_drive = (RPS.Y() - target_pose.y() + QR_CENTER_OF_ROT_DIST) * .80;
     drive_inch(DD_BACK, inches_to_drive);
     check_y(target_pose.y() + QR_CENTER_OF_ROT_DIST, PLUS);
 
@@ -952,7 +1020,8 @@ int main(void)
     // go to light
     inches_to_drive = (RPS.Y() - target_pose.y()) * .9;
     drive_inch(DD_FORE, inches_to_drive);
-    drive_inch(DD_FORE, 6, 60, 2);
+    turn_to_angle(target_pose.angle() + 3, .9, 30, 3);
+    drive_inch(DD_FORE, 5, 60, 2);
 
 
 
@@ -963,6 +1032,9 @@ int main(void)
     * --------------
     */
     // drive to other wall
+    target_pose = RPSPositions::get(RPS_JUKEBOX);
+    drive_inch(DD_BACK, .5);
+    turn_to_angle(target_pose.angle());
     drive_inch(DD_BACK, 3);
 
     turn_to_angle(180, .9);
@@ -977,7 +1049,7 @@ int main(void)
     
     // drive to ticket
     drive_until_bump(DD_FORE, 8, 60, 1.5);
-    drive_inch(DD_BACK, 2);
+    drive_inch(DD_BACK, 2.5);
     lift_basket(.3);
     
     // move ticket
@@ -985,12 +1057,16 @@ int main(void)
     turn_degrees(TD_LEFT, 80, 50, .8);
     turn_degrees(TD_RIGHT, 90, 50, .8);
     drive_inch(DD_BACK, 1, 60);
-    turn_to_angle(target_pose.angle());
+    turn_to_angle(target_pose.angle(), 1, 30, -1, 5);
     drive_inch(DD_BACK, 1, 60);
-    check_heading(RPSPositions::get(RPS_FIRST_TURN).angle(), 8);
+    check_heading(RPSPositions::get(RPS_FIRST_TURN).angle(), 4);
     drive_inch(DD_BACK, 3, 60);
 
-    // Final Button
+    /*
+    * -------------------
+    *   FINAL BUTTON
+    * -------------------
+    */
     while (true) {
         drive_until_bump(DD_BACK, 20, 70, 3);
         drive_inch(DD_FORE, RPS.X() - target_pose.x());
